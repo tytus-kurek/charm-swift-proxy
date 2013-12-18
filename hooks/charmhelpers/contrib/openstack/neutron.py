@@ -57,7 +57,8 @@ def quantum_plugins():
 
 def neutron_plugins():
     from charmhelpers.contrib.openstack import context
-    return {
+    release = os_release('nova-common')
+    plugins = {
         'ovs': {
             'config': '/etc/neutron/plugins/openvswitch/'
                       'ovs_neutron_plugin.ini',
@@ -69,7 +70,7 @@ def neutron_plugins():
                                         relation_prefix='neutron')],
             'services': ['neutron-plugin-openvswitch-agent'],
             'packages': [[headers_package(), 'openvswitch-datapath-dkms'],
-                         ['quantum-plugin-openvswitch-agent']],
+                         ['neutron-plugin-openvswitch-agent']],
             'server_packages': ['neutron-server',
                                 'neutron-plugin-openvswitch'],
             'server_services': ['neutron-server']
@@ -89,6 +90,11 @@ def neutron_plugins():
             'server_services': ['neutron-server']
         }
     }
+    # NOTE: patch in ml2 plugin for icehouse onwards
+    if release >= 'icehouse':
+        plugins['ovs']['config'] = '/etc/neutron/plugins/ml2/ml2_conf.ini'
+        plugins['ovs']['driver'] = 'neutron.plugins.ml2.plugin.Ml2Plugin'
+    return plugins
 
 
 def neutron_plugin_attribute(plugin, attr, net_manager=None):
