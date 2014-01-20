@@ -33,6 +33,15 @@ APACHE_SITE_24_CONF = '/etc/apache2/sites-available/' \
     'openstack_https_frontend.conf'
 
 WWW_DIR = '/var/www/swift-rings'
+ALTERNATE_WWW_DIR = '/var/www/html/swift-rings'
+
+
+def get_www_dir():
+    if os.path.isdir(os.path.basename(ALTERNATE_WWW_DIR)):
+        return ALTERNATE_WWW_DIR
+    else:
+        return WWW_DIR
+
 
 SWIFT_RINGS = {
     'account': '/etc/swift/account.builder',

@@ -13,7 +13,7 @@ from swift_utils import (
     restart_map,
     determine_packages,
     ensure_swift_dir,
-    SWIFT_RINGS, WWW_DIR,
+    SWIFT_RINGS, get_www_dir,
     initialize_ring,
     swift_user,
     SWIFT_HA_RES,
@@ -81,10 +81,11 @@ def install():
                         config('min-hours'))
 
     # configure a directory on webserver for distributing rings.
-    if not os.path.isdir(WWW_DIR):
-        os.mkdir(WWW_DIR, 0755)
+    www_dir = get_www_dir()
+    if not os.path.isdir(www_dir):
+        os.mkdir(www_dir, 0755)
     uid, gid = swift_user()
-    os.chown(WWW_DIR, uid, gid)
+    os.chown(www_dir, uid, gid)
 
 
 @hooks.hook('identity-service-relation-joined')
@@ -126,16 +127,17 @@ def balance_rings():
     if not new_ring:
         return
 
+    www_dir = get_www_dir()
     for ring in SWIFT_RINGS.keys():
         f = '%s.ring.gz' % ring
         shutil.copyfile(os.path.join(SWIFT_CONF_DIR, f),
-                        os.path.join(WWW_DIR, f))
+                        os.path.join(www_dir, f))
 
     if cluster.eligible_leader(SWIFT_HA_RES):
         msg = 'Broadcasting notification to all storage nodes that new '\
               'ring is ready for consumption.'
         log(msg)
-        path = WWW_DIR.split('/var/www/')[1]
+        path = www_dir.split('/var/www/')[1]
         trigger = uuid.uuid4()
 
         if cluster.is_clustered():
