@@ -37,7 +37,7 @@ ALTERNATE_WWW_DIR = '/var/www/html/swift-rings'
 
 
 def get_www_dir():
-    if os.path.isdir(os.path.basename(ALTERNATE_WWW_DIR)):
+    if os.path.isdir(os.path.dirname(ALTERNATE_WWW_DIR)):
         return ALTERNATE_WWW_DIR
     else:
         return WWW_DIR
