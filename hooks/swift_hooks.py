@@ -137,7 +137,7 @@ def balance_rings():
         msg = 'Broadcasting notification to all storage nodes that new '\
               'ring is ready for consumption.'
         log(msg)
-        path = www_dir.split('/var/www/')[1]
+        path = os.path.basename(www_dir)
         trigger = uuid.uuid4()
 
         if cluster.is_clustered():
