@@ -16,7 +16,7 @@ from charmhelpers.contrib.openstack.context import (
 
 from charmhelpers.contrib.hahelpers.cluster import (
     determine_api_port,
-    determine_haproxy_port,
+    determine_apache_port,
 )
 
 from charmhelpers.contrib.openstack.utils import get_host_ip
@@ -41,8 +41,8 @@ class HAProxyContext(OSContextGenerator):
         specific to this charm.
         Also used to extend cinder.conf context with correct api_listening_port
         '''
-        haproxy_port = determine_haproxy_port(config('bind-port'))
-        api_port = determine_api_port(config('bind-port'))
+        haproxy_port = config('bind-port')
+        api_port = determine_apache_port(config('bind-port'))
 
         ctxt = {
             'service_ports': {'swift_api': [haproxy_port, api_port]},
@@ -81,7 +81,7 @@ def generate_cert():
 
 class ApacheSSLContext(SSLContext):
     interfaces = ['https']
-    external_ports = [config('bind-port')]
+    external_ports = [determine_apache_port(config('bind-port'))]
     service_namespace = 'swift'
 
     def configure_cert(self):
