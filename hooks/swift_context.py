@@ -168,6 +168,8 @@ class SwiftIdentityContext(OSContextGenerator):
                     'auth_type': 'keystone',
                     'auth_protocol': relation_get('auth_protocol',
                                                   unit, relid),
+                    'service_protocol': relation_get('service_protocol',
+                                                  unit, relid),
                     'keystone_host': relation_get('auth_host',
                                                   unit, relid),
                     'auth_port': relation_get('auth_port',
