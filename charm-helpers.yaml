@@ -1,4 +1,4 @@
-branch: lp:charm-helpers
+branch: lp:~openstack-charmers/charm-helpers/ssl-everywhere
 destination: hooks/charmhelpers
 include:
     - core
@@ -7,4 +7,5 @@ include:
     - contrib.hahelpers:
         - apache
         - cluster
+    - contrib.storage.linux
     - payload.execd
