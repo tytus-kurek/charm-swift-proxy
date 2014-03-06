@@ -12,7 +12,7 @@ from charmhelpers.core.hookenv import (
 )
 from charmhelpers.fetch import (
     apt_update,
-    apt_install
+    apt_upgrade
 )
 
 import charmhelpers.contrib.openstack.context as context
@@ -351,6 +351,5 @@ def should_balance(rings):
 def do_openstack_upgrade(source, packages):
     openstack.configure_installation_source(source)
     apt_update(fatal=True)
-    apt_install(options=['--option', 'Dpkg::Options::=--force-confnew'],
-                packages=packages,
+    apt_upgrade(options=['--option', 'Dpkg::Options::=--force-confnew'],
                 fatal=True)
