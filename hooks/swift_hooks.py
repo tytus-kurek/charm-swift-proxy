@@ -199,14 +199,8 @@ def config_changed():
     open_port(config('bind-port'))
     # Determine whether or not we should do an upgrade, based on the
     # the version offered in keyston-release.
-    src = config('openstack-origin')
-    available = openstack.get_os_codename_install_source(src)
-    installed = openstack.get_os_codename_package('python-swift')
-    if (available and
-        openstack.get_os_version_codename(available) >
-        openstack.get_os_version_codename(installed)):
-        pkgs = determine_packages(available)
-        do_openstack_upgrade(src, pkgs)
+    if (openstack.openstack_upgrade_available('python-swift')):
+        do_openstack_upgrade(CONFIGS)
 
 
 @hooks.hook('cluster-relation-changed',

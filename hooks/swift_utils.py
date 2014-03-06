@@ -348,8 +348,17 @@ def should_balance(rings):
     return do_rebalance
 
 
-def do_openstack_upgrade(source, packages):
-    openstack.configure_installation_source(source)
-    apt_update(fatal=True)
-    apt_upgrade(options=['--option', 'Dpkg::Options::=--force-confnew'],
-                fatal=True)
+def do_openstack_upgrade(configs):
+    new_src = config('openstack-origin')
+    new_os_rel = openstack.get_os_codename_install_source(new_src)
+
+    log('Performing OpenStack upgrade to %s.' % (new_os_rel))
+    openstack.configure_installation_source(new_src)
+    dpkg_opts = [
+        '--option', 'Dpkg::Options::=--force-confnew',
+        '--option', 'Dpkg::Options::=--force-confdef',
+    ]
+    apt_update()
+    apt_upgrade(options=dpkg_opts, fatal=True, dist=True)
+    configs.set_release(openstack_release=new_os_rel)
+    configs.write_all()
