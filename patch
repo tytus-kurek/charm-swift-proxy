@@ -1,0 +1,33 @@
+=== modified file 'hooks/swift_context.py'
+--- hooks/swift_context.py	2013-09-27 12:02:37 +0000
++++ hooks/swift_context.py	2014-02-24 18:10:58 +0000
+@@ -16,7 +16,7 @@
+ 
+ from charmhelpers.contrib.hahelpers.cluster import (
+     determine_api_port,
+-    determine_haproxy_port,
++    determine_apache_port,
+ )
+ 
+ from charmhelpers.contrib.openstack.utils import get_host_ip
+@@ -41,8 +41,8 @@
+         specific to this charm.
+         Also used to extend cinder.conf context with correct api_listening_port
+         '''
+-        haproxy_port = determine_haproxy_port(config('bind-port'))
+-        api_port = determine_api_port(config('bind-port'))
++        haproxy_port = config('bind-port')
++        api_port = determine_apache_port(config('bind-port'))
+ 
+         ctxt = {
+             'service_ports': {'swift_api': [haproxy_port, api_port]},
+@@ -81,7 +81,7 @@
+ 
+ class ApacheSSLContext(SSLContext):
+     interfaces = ['https']
+-    external_ports = [config('bind-port')]
++    external_ports = [determine_apache_port(config('bind-port'))]
+     service_namespace = 'swift'
+ 
+     def configure_cert(self):
+
