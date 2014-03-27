@@ -166,7 +166,10 @@ class SwiftIdentityContext(OSContextGenerator):
             for unit in related_units(relid):
                 ks_auth = {
                     'auth_type': 'keystone',
-                    'auth_protocol': 'http',  # TODO: http hardcode
+                    'auth_protocol': relation_get('auth_protocol',
+                                                  unit, relid) or 'http',
+                    'service_protocol': relation_get('service_protocol',
+                                                  unit, relid) or 'http',
                     'keystone_host': relation_get('auth_host',
                                                   unit, relid),
                     'auth_port': relation_get('auth_port',
