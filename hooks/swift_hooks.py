@@ -83,7 +83,7 @@ def install():
     # configure a directory on webserver for distributing rings.
     www_dir = get_www_dir()
     if not os.path.isdir(www_dir):
-        os.mkdir(www_dir, 0755)
+        os.mkdir(www_dir, 0o755)
     uid, gid = swift_user()
     os.chown(www_dir, uid, gid)
 

@@ -166,7 +166,7 @@ def swift_user(username='swift'):
 
 def ensure_swift_dir(conf_dir=os.path.dirname(SWIFT_CONF)):
     if not os.path.isdir(conf_dir):
-        os.mkdir(conf_dir, 0750)
+        os.mkdir(conf_dir, 0o750)
     uid, gid = swift_user()
     os.chown(conf_dir, uid, gid)
 

@@ -70,7 +70,7 @@ def generate_cert():
                '-out', CERT, '-keyout', KEY,
                '-subj', subj]
         subprocess.check_call(cmd)
-        os.chmod(KEY, 0600)
+        os.chmod(KEY, 0o600)
     # Slurp as base64 encoded - makes handling easier up the stack
     with open(CERT, 'r') as cfile:
         ssl_cert = b64encode(cfile.read())
@@ -110,6 +110,7 @@ class ApacheSSLContext(SSLContext):
 
 
 class SwiftRingContext(OSContextGenerator):
+
     def __call__(self):
         allowed_hosts = []
         for relid in relation_ids('swift-storage'):
@@ -148,7 +149,7 @@ class SwiftIdentityContext(OSContextGenerator):
         admin_user = config('keystone-admin-user')
         admin_password = config('keystone-admin-user')
         if (auth_type == 'keystone' and auth_host
-            and admin_user and admin_password):
+                and admin_user and admin_password):
             log('Using user-specified Keystone configuration.')
             ks_auth = {
                 'auth_type': 'keystone',
@@ -169,7 +170,7 @@ class SwiftIdentityContext(OSContextGenerator):
                     'auth_protocol': relation_get('auth_protocol',
                                                   unit, relid) or 'http',
                     'service_protocol': relation_get('service_protocol',
-                                                  unit, relid) or 'http',
+                                                     unit, relid) or 'http',
                     'keystone_host': relation_get('auth_host',
                                                   unit, relid),
                     'auth_port': relation_get('auth_port',
@@ -191,6 +192,7 @@ class SwiftIdentityContext(OSContextGenerator):
 
 
 class MemcachedContext(OSContextGenerator):
+
     def __call__(self):
         ctxt = {
             'proxy_ip': get_host_ip(unit_get('private-address'))
@@ -219,6 +221,7 @@ def get_swift_hash():
 
 
 class SwiftHashContext(OSContextGenerator):
+
     def __call__(self):
         ctxt = {
             'swift_hash': get_swift_hash()
