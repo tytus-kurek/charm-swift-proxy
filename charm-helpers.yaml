@@ -8,5 +8,4 @@ include:
     - contrib.hahelpers:
         - apache
         - cluster
-    - contrib.storage.linux
     - payload.execd
