@@ -16,7 +16,7 @@ from charmhelpers.contrib.openstack.context import (
 
 from charmhelpers.contrib.hahelpers.cluster import (
     determine_api_port,
-    determine_haproxy_port,
+    determine_apache_port,
 )
 
 from charmhelpers.contrib.openstack.utils import get_host_ip
@@ -41,8 +41,8 @@ class HAProxyContext(OSContextGenerator):
         specific to this charm.
         Also used to extend cinder.conf context with correct api_listening_port
         '''
-        haproxy_port = determine_haproxy_port(config('bind-port'))
-        api_port = determine_api_port(config('bind-port'))
+        haproxy_port = config('bind-port')
+        api_port = determine_apache_port(config('bind-port'))
 
         ctxt = {
             'service_ports': {'swift_api': [haproxy_port, api_port]},
@@ -70,7 +70,7 @@ def generate_cert():
                '-out', CERT, '-keyout', KEY,
                '-subj', subj]
         subprocess.check_call(cmd)
-        os.chmod(KEY, 0600)
+        os.chmod(KEY, 0o600)
     # Slurp as base64 encoded - makes handling easier up the stack
     with open(CERT, 'r') as cfile:
         ssl_cert = b64encode(cfile.read())
@@ -81,7 +81,7 @@ def generate_cert():
 
 class ApacheSSLContext(SSLContext):
     interfaces = ['https']
-    external_ports = [config('bind-port')]
+    external_ports = [determine_apache_port(config('bind-port'))]
     service_namespace = 'swift'
 
     def configure_cert(self):
@@ -110,6 +110,7 @@ class ApacheSSLContext(SSLContext):
 
 
 class SwiftRingContext(OSContextGenerator):
+
     def __call__(self):
         allowed_hosts = []
         for relid in relation_ids('swift-storage'):
@@ -148,7 +149,7 @@ class SwiftIdentityContext(OSContextGenerator):
         admin_user = config('keystone-admin-user')
         admin_password = config('keystone-admin-user')
         if (auth_type == 'keystone' and auth_host
-            and admin_user and admin_password):
+                and admin_user and admin_password):
             log('Using user-specified Keystone configuration.')
             ks_auth = {
                 'auth_type': 'keystone',
@@ -166,7 +167,10 @@ class SwiftIdentityContext(OSContextGenerator):
             for unit in related_units(relid):
                 ks_auth = {
                     'auth_type': 'keystone',
-                    'auth_protocol': 'http',  # TODO: http hardcode
+                    'auth_protocol': relation_get('auth_protocol',
+                                                  unit, relid) or 'http',
+                    'service_protocol': relation_get('service_protocol',
+                                                     unit, relid) or 'http',
                     'keystone_host': relation_get('auth_host',
                                                   unit, relid),
                     'auth_port': relation_get('auth_port',
@@ -188,6 +192,7 @@ class SwiftIdentityContext(OSContextGenerator):
 
 
 class MemcachedContext(OSContextGenerator):
+
     def __call__(self):
         ctxt = {
             'proxy_ip': get_host_ip(unit_get('private-address'))
@@ -216,6 +221,7 @@ def get_swift_hash():
 
 
 class SwiftHashContext(OSContextGenerator):
+
     def __call__(self):
         ctxt = {
             'swift_hash': get_swift_hash()

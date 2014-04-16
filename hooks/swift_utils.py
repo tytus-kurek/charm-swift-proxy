@@ -12,7 +12,7 @@ from charmhelpers.core.hookenv import (
 )
 from charmhelpers.fetch import (
     apt_update,
-    apt_install
+    apt_upgrade
 )
 
 import charmhelpers.contrib.openstack.context as context
@@ -33,6 +33,15 @@ APACHE_SITE_24_CONF = '/etc/apache2/sites-available/' \
     'openstack_https_frontend.conf'
 
 WWW_DIR = '/var/www/swift-rings'
+ALTERNATE_WWW_DIR = '/var/www/html/swift-rings'
+
+
+def get_www_dir():
+    if os.path.isdir(os.path.dirname(ALTERNATE_WWW_DIR)):
+        return ALTERNATE_WWW_DIR
+    else:
+        return WWW_DIR
+
 
 SWIFT_RINGS = {
     'account': '/etc/swift/account.builder',
@@ -157,7 +166,7 @@ def swift_user(username='swift'):
 
 def ensure_swift_dir(conf_dir=os.path.dirname(SWIFT_CONF)):
     if not os.path.isdir(conf_dir):
-        os.mkdir(conf_dir, 0750)
+        os.mkdir(conf_dir, 0o750)
     uid, gid = swift_user()
     os.chown(conf_dir, uid, gid)
 
@@ -339,9 +348,17 @@ def should_balance(rings):
     return do_rebalance
 
 
-def do_openstack_upgrade(source, packages):
-    openstack.configure_installation_source(source)
-    apt_update(fatal=True)
-    apt_install(options=['--option', 'Dpkg::Options::=--force-confnew'],
-                packages=packages,
-                fatal=True)
+def do_openstack_upgrade(configs):
+    new_src = config('openstack-origin')
+    new_os_rel = openstack.get_os_codename_install_source(new_src)
+
+    log('Performing OpenStack upgrade to %s.' % (new_os_rel))
+    openstack.configure_installation_source(new_src)
+    dpkg_opts = [
+        '--option', 'Dpkg::Options::=--force-confnew',
+        '--option', 'Dpkg::Options::=--force-confdef',
+    ]
+    apt_update()
+    apt_upgrade(options=dpkg_opts, fatal=True, dist=True)
+    configs.set_release(openstack_release=new_os_rel)
+    configs.write_all()
