@@ -46,7 +46,7 @@ class ProxyServerTemplateTestCase(unittest.TestCase):
 
         The os_release is no longer provided as context to the templates.
         """
-        for release in ('essex', 'grizzly', 'havana'):
+        for release in ('essex', 'grizzly', 'havana', 'icehouse'):
             template = self.get_template_for_release(release)
             with open(template.filename, 'r') as template_orig:
                 self.assertNotIn(
@@ -57,7 +57,7 @@ class ProxyServerTemplateTestCase(unittest.TestCase):
 
     def test_config_renders_for_all_releases(self):
         """The configs render without syntax error."""
-        for release in ('essex', 'grizzly', 'havana'):
+        for release in ('essex', 'grizzly', 'havana', 'icehouse'):
             template = self.get_template_for_release(release)
 
             result = template.render()

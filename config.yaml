@@ -106,6 +106,19 @@ options:
     default: true
     type: boolean
     description: Delay authentication to downstream WSGI services.
+  node-timeout:
+    default: 60
+    type: int
+    description: How long the proxy server will wait on responses from the a/c/o servers.
+  recoverable-node-timeout:
+    default: 30
+    type: int
+    description: |
+      How long the proxy server will wait for an initial response and to read a
+      chunk of data from the object servers while serving GET / HEAD requests.
+      Timeouts from these requests can be recovered from so setting this to
+      something lower than node-timeout would provide quicker error recovery
+      while allowing for a longer timeout for non-recoverable requests (PUTs).
   # Manual Keystone configuration.
   keystone-auth-host:
     type: string
