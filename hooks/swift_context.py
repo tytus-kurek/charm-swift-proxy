@@ -139,7 +139,9 @@ class SwiftIdentityContext(OSContextGenerator):
             'bind_port': determine_api_port(bind_port),
             'workers': workers,
             'operator_roles': config('operator-roles'),
-            'delay_auth_decision': config('delay-auth-decision')
+            'delay_auth_decision': config('delay-auth-decision'),
+            'node_timeout': config('node-timeout'),
+            'recoverable_node_timeout': config('recoverable-node-timeout'),
         }
 
         ctxt['ssl'] = False
