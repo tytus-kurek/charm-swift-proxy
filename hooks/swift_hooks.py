@@ -212,7 +212,7 @@ def config_changed():
     if (openstack.openstack_upgrade_available('python-swift')):
         do_openstack_upgrade(CONFIGS)
     for r_id in relation_ids('identity-service'):
-        keystone_joined(rid=r_id)
+        keystone_joined(relid=r_id)
 
 
 @hooks.hook('cluster-relation-changed',
