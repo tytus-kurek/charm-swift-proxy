@@ -100,7 +100,7 @@ def keystone_joined(relid=None):
                                            unit_get('public-address'))
         internal_ip = get_address_in_network(config('os-internal-network'),
                                              unit_get('private-address'))
-        admin_ip = get_address_in_network(config('os-internal-network'),
+        admin_ip = get_address_in_network(config('os-admin-network'),
                                           unit_get('private-address'))
     port = config('bind-port')
     if cluster.https():
