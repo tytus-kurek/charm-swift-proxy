@@ -47,7 +47,11 @@ from charmhelpers.fetch import (
     apt_update
 )
 from charmhelpers.payload.execd import execd_preinstall
-from charmhelpers.contrib.network.ip import get_address_in_network
+
+from charmhelpers.contrib.openstack.ip import (
+    canonical_url,
+    PUBLIC, INTERNAL, ADMIN
+)
 
 extra_pkgs = [
     "haproxy",
@@ -93,25 +97,12 @@ def install():
 def keystone_joined(relid=None):
     if not cluster.eligible_leader(SWIFT_HA_RES):
         return
-    if cluster.is_clustered():
-        public_ip, internal_ip, admin_ip = config('vip')
-    else:
-        public_ip = get_address_in_network(config('os-public-network'),
-                                           unit_get('public-address'))
-        internal_ip = get_address_in_network(config('os-internal-network'),
-                                             unit_get('private-address'))
-        admin_ip = get_address_in_network(config('os-admin-network'),
-                                          unit_get('private-address'))
     port = config('bind-port')
-    if cluster.https():
-        proto = 'https'
-    else:
-        proto = 'http'
-    admin_url = '%s://%s:%s' % (proto, admin_ip, port)
-    internal_url = '%s://%s:%s/v1/AUTH_$(tenant_id)s' % (proto, internal_ip,
-                                                         port)
-    public_url = '%s://%s:%s/v1/AUTH_$(tenant_id)s' % (proto, public_ip,
-                                                       port)
+    admin_url = '%s://%s:%s' % (canonical_url(CONFIGS, ADMIN), port)
+    internal_url = '%s://%s:%s/v1/AUTH_$(tenant_id)s' % \
+        (canonical_url(CONFIGS, INTERNAL), port)
+    public_url = '%s://%s:%s/v1/AUTH_$(tenant_id)s' % \
+        (canonical_url(CONFIGS, PUBLIC), port)
     relation_set(service='swift',
                  region=config('region'),
                  public_url=public_url,
