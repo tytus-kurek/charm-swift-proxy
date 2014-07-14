@@ -98,10 +98,10 @@ def keystone_joined(relid=None):
     if not cluster.eligible_leader(SWIFT_HA_RES):
         return
     port = config('bind-port')
-    admin_url = '%s://%s:%s' % (canonical_url(CONFIGS, ADMIN), port)
-    internal_url = '%s://%s:%s/v1/AUTH_$(tenant_id)s' % \
+    admin_url = '%s:%s' % (canonical_url(CONFIGS, ADMIN), port)
+    internal_url = '%s:%s/v1/AUTH_$(tenant_id)s' % \
         (canonical_url(CONFIGS, INTERNAL), port)
-    public_url = '%s://%s:%s/v1/AUTH_$(tenant_id)s' % \
+    public_url = '%s:%s/v1/AUTH_$(tenant_id)s' % \
         (canonical_url(CONFIGS, PUBLIC), port)
     relation_set(service='swift',
                  region=config('region'),
