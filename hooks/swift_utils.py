@@ -63,7 +63,7 @@ BASE_PACKAGES = [
 # > Folsom specific packages
 FOLSOM_PACKAGES = BASE_PACKAGES + ['swift-plugin-s3']
 
-SWIFT_HA_RES = 'res_swift_vip'
+SWIFT_HA_RES = 'grp_swift_vips'
 
 TEMPLATES = 'templates/'
 
