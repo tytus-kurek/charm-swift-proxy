@@ -275,8 +275,14 @@ def _get_zone(ring_builder):
     zones = [d['zone'] for d in ring_builder.devs]
     if not zones:
         return 1
-    if len(zones) < replicas:
-        return sorted(zones).pop() + 1
+
+    # zones is a per-device list, so we may have one
+    # node with 3 devices in zone 1.  For balancing
+    # we need to track the unique zones being used
+    # not necessarily the number of devices
+    unique_zones = list(set(zones))
+    if len(unique_zones) < replicas:
+        return sorted(unique_zones).pop() + 1
 
     zone_distrib = {}
     for z in zones:
