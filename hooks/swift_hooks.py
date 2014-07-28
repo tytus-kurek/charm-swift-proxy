@@ -48,6 +48,15 @@ from charmhelpers.fetch import (
 )
 from charmhelpers.payload.execd import execd_preinstall
 
+from charmhelpers.contrib.openstack.ip import (
+    canonical_url,
+    PUBLIC, INTERNAL, ADMIN
+)
+from charmhelpers.contrib.network.ip import (
+    get_iface_for_address,
+    get_netmask_for_address
+)
+
 extra_pkgs = [
     "haproxy",
     "python-jinja2"
@@ -92,20 +101,16 @@ def install():
 def keystone_joined(relid=None):
     if not cluster.eligible_leader(SWIFT_HA_RES):
         return
-    if cluster.is_clustered():
-        hostname = config('vip')
-    else:
-        hostname = unit_get('private-address')
     port = config('bind-port')
-    if cluster.https():
-        proto = 'https'
-    else:
-        proto = 'http'
-    admin_url = '%s://%s:%s' % (proto, hostname, port)
-    internal_url = public_url = '%s/v1/AUTH_$(tenant_id)s' % admin_url
+    admin_url = '%s:%s' % (canonical_url(CONFIGS, ADMIN), port)
+    internal_url = '%s:%s/v1/AUTH_$(tenant_id)s' % \
+        (canonical_url(CONFIGS, INTERNAL), port)
+    public_url = '%s:%s/v1/AUTH_$(tenant_id)s' % \
+        (canonical_url(CONFIGS, PUBLIC), port)
     relation_set(service='swift',
                  region=config('region'),
-                 public_url=public_url, internal_url=internal_url,
+                 public_url=public_url,
+                 internal_url=internal_url,
                  admin_url=admin_url,
                  requested_roles=config('operator-roles'),
                  relation_id=relid)
@@ -201,6 +206,8 @@ def config_changed():
     # the version offered in keyston-release.
     if (openstack.openstack_upgrade_available('python-swift')):
         do_openstack_upgrade(CONFIGS)
+    for r_id in relation_ids('identity-service'):
+        keystone_joined(relid=r_id)
 
 
 @hooks.hook('cluster-relation-changed',
@@ -229,8 +236,6 @@ def ha_relation_joined():
     corosync_bindiface = config('ha-bindiface')
     corosync_mcastport = config('ha-mcastport')
     vip = config('vip')
-    vip_cidr = config('vip_cidr')
-    vip_iface = config('vip_iface')
     if not vip:
         log('Unable to configure hacluster as vip not provided',
             level=ERROR)
@@ -238,14 +243,29 @@ def ha_relation_joined():
 
     # Obtain resources
     resources = {
-        'res_swift_vip': 'ocf:heartbeat:IPaddr2',
         'res_swift_haproxy': 'lsb:haproxy'
     }
     resource_params = {
-        'res_swift_vip': 'params ip="%s" cidr_netmask="%s" nic="%s"' %
-        (vip, vip_cidr, vip_iface),
         'res_swift_haproxy': 'op monitor interval="5s"'
     }
+
+    vip_group = []
+    for vip in vip.split():
+        iface = get_iface_for_address(vip)
+        if iface is not None:
+            vip_key = 'res_swift_{}_vip'.format(iface)
+            resources[vip_key] = 'ocf:heartbeat:IPaddr2'
+            resource_params[vip_key] = (
+                'params ip="{vip}" cidr_netmask="{netmask}"'
+                ' nic="{iface}"'.format(vip=vip,
+                                        iface=iface,
+                                        netmask=get_netmask_for_address(vip))
+            )
+            vip_group.append(vip_key)
+
+    if len(vip_group) > 1:
+        relation_set(groups={'grp_swift_vips': ' '.join(vip_group)})
+
     init_services = {
         'res_swift_haproxy': 'haproxy'
     }
