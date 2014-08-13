@@ -19,6 +19,10 @@ from charmhelpers.contrib.hahelpers.cluster import (
     determine_apache_port,
 )
 
+from charmhelpers.contrib.network.ip import (
+    get_ipv6_addr,
+)
+
 from charmhelpers.contrib.openstack.utils import get_host_ip
 import subprocess
 import os
@@ -134,8 +138,12 @@ class SwiftIdentityContext(OSContextGenerator):
         if workers == '0':
             import multiprocessing
             workers = multiprocessing.cpu_count()
+        if config('prefer-ipv6'):
+            proxy_ip = '%s' % get_ipv6_addr()
+        else:
+            proxy_ip = get_host_ip(unit_get('private-address'))
         ctxt = {
-            'proxy_ip': get_host_ip(unit_get('private-address')),
+            'proxy_ip': proxy_ip,
             'bind_port': determine_api_port(bind_port),
             'workers': workers,
             'operator_roles': config('operator-roles'),
@@ -196,9 +204,13 @@ class SwiftIdentityContext(OSContextGenerator):
 class MemcachedContext(OSContextGenerator):
 
     def __call__(self):
-        ctxt = {
-            'proxy_ip': get_host_ip(unit_get('private-address'))
-        }
+        ctxt = {}
+        if config('prefer-ipv6'):
+            
+            ctxt['proxy_ip'] = get_ipv6_addr()
+        else:
+            ctxt['proxy_ip'] = get_host_ip(unit_get('private-address')) 
+
         return ctxt
 
 SWIFT_HASH_FILE = '/var/lib/juju/swift-hash-path.conf'

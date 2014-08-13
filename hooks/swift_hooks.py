@@ -249,22 +249,29 @@ def ha_relation_joined():
         'res_swift_haproxy': 'op monitor interval="5s"'
     }
 
+    if config('prefer-ipv6'):
+        res_swift_vip = 'ocf:heartbeat:IPv6addr'
+        vip_params = 'ipv6addr'
+    else:
+        res_swift_vip = 'ocf:heartbeat:IPaddr2'
+        vip_params = 'ip'
+
     vip_group = []
     for vip in vip.split():
         iface = get_iface_for_address(vip)
         if iface is not None:
             vip_key = 'res_swift_{}_vip'.format(iface)
-            resources[vip_key] = 'ocf:heartbeat:IPaddr2'
+            resources[vip_key] = res_swift_haproxy
             resource_params[vip_key] = (
-                'params ip="{vip}" cidr_netmask="{netmask}"'
-                ' nic="{iface}"'.format(vip=vip,
+                'params {ip}="{vip}" cidr_netmask="{netmask}"'
+                ' nic="{iface}"'.format(ip=vip_params
+                                        vip=vip,
                                         iface=iface,
                                         netmask=get_netmask_for_address(vip))
             )
             vip_group.append(vip_key)
 
-    if len(vip_group) > 1:
-        relation_set(groups={'grp_swift_vips': ' '.join(vip_group)})
+    relation_set(groups={'grp_swift_vips': ' '.join(vip_group)})
 
     init_services = {
         'res_swift_haproxy': 'haproxy'
