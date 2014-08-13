@@ -120,7 +120,11 @@ class SwiftRingContext(OSContextGenerator):
         for relid in relation_ids('swift-storage'):
             for unit in related_units(relid):
                 host = relation_get('private-address', unit, relid)
-                allowed_hosts.append(get_host_ip(host))
+                if config('prefer-ipv6'):
+                    host_ip = get_ipv6_addr()
+                else:
+                    host_ip = get_host_ip(host)
+                allowed_hosts.append(host_ip)
 
         ctxt = {
             'www_dir': WWW_DIR,
