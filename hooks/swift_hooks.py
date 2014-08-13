@@ -54,7 +54,8 @@ from charmhelpers.contrib.openstack.ip import (
 )
 from charmhelpers.contrib.network.ip import (
     get_iface_for_address,
-    get_netmask_for_address
+    get_netmask_for_address,
+    get_ipv6_addr,
 )
 
 extra_pkgs = [
@@ -162,9 +163,13 @@ def balance_rings():
 @hooks.hook('swift-storage-relation-changed')
 @restart_on_change(restart_map())
 def storage_changed():
+    if config('prefer-ipv6'):
+        host_ip = get_ipv6_addr()
+    else:
+        host_ip = openstack.get_host_ip(relation_get('private-address'))
     zone = get_zone(config('zone-assignment'))
     node_settings = {
-        'ip': openstack.get_host_ip(relation_get('private-address')),
+        'ip': host_ip,
         'zone': zone,
         'account_port': relation_get('account_port'),
         'object_port': relation_get('object_port'),
@@ -261,10 +266,10 @@ def ha_relation_joined():
         iface = get_iface_for_address(vip)
         if iface is not None:
             vip_key = 'res_swift_{}_vip'.format(iface)
-            resources[vip_key] = res_swift_haproxy
+            resources[vip_key] = res_swift_vip
             resource_params[vip_key] = (
                 'params {ip}="{vip}" cidr_netmask="{netmask}"'
-                ' nic="{iface}"'.format(ip=vip_params
+                ' nic="{iface}"'.format(ip=vip_params,
                                         vip=vip,
                                         iface=iface,
                                         netmask=get_netmask_for_address(vip))
