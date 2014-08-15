@@ -143,11 +143,14 @@ class SwiftIdentityContext(OSContextGenerator):
             import multiprocessing
             workers = multiprocessing.cpu_count()
         if config('prefer-ipv6'):
-            proxy_ip = '%s' % get_ipv6_addr()
+            proxy_ip = '[%s]' % get_ipv6_addr()
+            memcached_ip = 'ip6-localhost'
         else:
             proxy_ip = get_host_ip(unit_get('private-address'))
+            memcached_ip = get_host_ip(unit_get('private-address'))
         ctxt = {
             'proxy_ip': proxy_ip,
+            'memcached_ip': memcached_ip,
             'bind_port': determine_api_port(bind_port),
             'workers': workers,
             'operator_roles': config('operator-roles'),
@@ -211,9 +214,9 @@ class MemcachedContext(OSContextGenerator):
         ctxt = {}
         if config('prefer-ipv6'):
             
-            ctxt['proxy_ip'] = get_ipv6_addr()
+            ctxt['memcached_ip'] = 'ip6-localhost'
         else:
-            ctxt['proxy_ip'] = get_host_ip(unit_get('private-address')) 
+            ctxt['memcached_ip'] = get_host_ip(unit_get('private-address')) 
 
         return ctxt
 
@@ -244,4 +247,15 @@ class SwiftHashContext(OSContextGenerator):
         ctxt = {
             'swift_hash': get_swift_hash()
         }
+        return ctxt
+
+
+class SwiftIPv6Context(OSContextGenerator):
+
+    def __call__(self):
+        ctxt = {}
+        if config('prefer-ipv6'):
+            ctxt['bind_ip'] = '::'
+        else:
+            ctxt['bind_ip'] = '0.0.0.0'
         return ctxt

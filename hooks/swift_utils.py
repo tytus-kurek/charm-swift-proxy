@@ -75,7 +75,8 @@ CONFIG_FILES = OrderedDict([
         'services': ['swift-proxy'],
     }),
     (SWIFT_PROXY_CONF, {
-        'hook_contexts': [swift_context.SwiftIdentityContext()],
+        'hook_contexts': [swift_context.SwiftIdentityContext(),
+                          swift_context.SwiftIPv6Context()],
         'services': ['swift-proxy'],
     }),
     (HAPROXY_CONF, {
