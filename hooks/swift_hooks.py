@@ -40,7 +40,8 @@ from charmhelpers.core.hookenv import (
 )
 from charmhelpers.core.host import (
     service_restart,
-    restart_on_change
+    restart_on_change,
+    lsb_release,
 )
 from charmhelpers.fetch import (
     apt_install,
@@ -177,7 +178,7 @@ def balance_rings():
 @restart_on_change(restart_map())
 def storage_changed():
     if config('prefer-ipv6'):
-        host_ip = relation_get('private-address')
+        host_ip = '[%s]' % relation_get('private-address')
     else:
         host_ip = openstack.get_host_ip(relation_get('private-address'))
     zone = get_zone(config('zone-assignment'))
