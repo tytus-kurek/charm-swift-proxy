@@ -60,6 +60,8 @@ from charmhelpers.contrib.network.ip import (
     get_ipv6_addr,
 )
 
+from charmhelpers.contrib.peerstorage import peer_store
+
 extra_pkgs = [
     "haproxy",
     "python-jinja2"
@@ -233,6 +235,8 @@ def config_changed():
             'cluster-relation-joined')
 @restart_on_change(restart_map())
 def cluster_changed():
+    if config('prefer-ipv6'):
+        peer_store('private-address', get_ipv6_addr())
     CONFIGS.write_all()
 
 
