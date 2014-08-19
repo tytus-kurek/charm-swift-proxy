@@ -213,11 +213,9 @@ class MemcachedContext(OSContextGenerator):
     def __call__(self):
         ctxt = {}
         if config('prefer-ipv6'):
-            
             ctxt['memcached_ip'] = 'ip6-localhost'
         else:
-            ctxt['memcached_ip'] = get_host_ip(unit_get('private-address')) 
-
+            ctxt['memcached_ip'] = get_host_ip(unit_get('private-address'))
         return ctxt
 
 SWIFT_HASH_FILE = '/var/lib/juju/swift-hash-path.conf'
