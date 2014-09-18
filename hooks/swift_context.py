@@ -20,7 +20,7 @@ from charmhelpers.contrib.hahelpers.cluster import (
 )
 
 from charmhelpers.contrib.network.ip import (
-    get_ipv6_addr,
+    get_ipv6_addr
 )
 
 from charmhelpers.contrib.openstack.utils import get_host_ip
@@ -256,4 +256,5 @@ class SwiftIPv6Context(OSContextGenerator):
             ctxt['bind_ip'] = '::'
         else:
             ctxt['bind_ip'] = '0.0.0.0'
+
         return ctxt

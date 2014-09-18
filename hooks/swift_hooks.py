@@ -24,7 +24,8 @@ from swift_utils import (
     add_to_ring,
     should_balance,
     do_openstack_upgrade,
-    write_rc_script
+    write_rc_script,
+    setup_ipv6
 )
 from swift_context import get_swift_hash
 
@@ -40,13 +41,11 @@ from charmhelpers.core.hookenv import (
 )
 from charmhelpers.core.host import (
     service_restart,
-    restart_on_change,
-    lsb_release,
+    restart_on_change
 )
 from charmhelpers.fetch import (
     apt_install,
-    apt_update,
-    add_source
+    apt_update
 )
 from charmhelpers.payload.execd import execd_preinstall
 
@@ -57,10 +56,8 @@ from charmhelpers.contrib.openstack.ip import (
 from charmhelpers.contrib.network.ip import (
     get_iface_for_address,
     get_netmask_for_address,
-    get_ipv6_addr,
+    get_ipv6_addr
 )
-
-from charmhelpers.contrib.peerstorage import peer_store
 
 extra_pkgs = [
     "haproxy",
@@ -80,13 +77,8 @@ def install():
     if src != 'distro':
         openstack.configure_installation_source(src)
 
-    # Note(xianghui): Need to install haproxy(1.5.3) from trusty-backports
-    # to support ipv6 address, so check is required to make sure not
-    # breaking other versions.
-    trusty = lsb_release()['DISTRIB_CODENAME'] == 'trusty'
-    if config('prefer-ipv6') and trusty:
-        add_source('deb http://archive.ubuntu.com/ubuntu trusty-backports'
-                   ' main')
+    if config('prefer-ipv6'):
+        setup_ipv6()
 
     apt_update(fatal=True)
     rel = openstack.get_os_codename_install_source(src)
@@ -94,8 +86,6 @@ def install():
     pkgs = determine_packages(rel)
     apt_install(pkgs, fatal=True)
     apt_install(extra_pkgs, fatal=True)
-    if config('prefer-ipv6') and trusty:
-        apt_install('haproxy/trusty-backports', fatal=True)
     ensure_swift_dir()
     # initialize new storage rings.
     for ring in SWIFT_RINGS.iteritems():
@@ -181,6 +171,7 @@ def storage_changed():
         host_ip = '[%s]' % relation_get('private-address')
     else:
         host_ip = openstack.get_host_ip(relation_get('private-address'))
+
     zone = get_zone(config('zone-assignment'))
     node_settings = {
         'ip': host_ip,
@@ -219,6 +210,9 @@ def storage_broken():
 @hooks.hook('config-changed')
 @restart_on_change(restart_map())
 def config_changed():
+    if config('prefer-ipv6'):
+        setup_ipv6()
+
     configure_https()
     open_port(config('bind-port'))
     # Determine whether or not we should do an upgrade, based on the
@@ -234,7 +228,11 @@ def config_changed():
 @restart_on_change(restart_map())
 def cluster_changed():
     if config('prefer-ipv6'):
-        peer_store('private-address', get_ipv6_addr())
+        for rid in relation_ids('cluster'):
+            relation_set(relation_id=rid,
+                         relation_settings={'private-address':
+                                            get_ipv6_addr()})
+
     CONFIGS.write_all()
 
 
