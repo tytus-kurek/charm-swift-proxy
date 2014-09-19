@@ -231,7 +231,7 @@ def cluster_changed():
         for rid in relation_ids('cluster'):
             relation_set(relation_id=rid,
                          relation_settings={'private-address':
-                                            get_ipv6_addr()})
+                                            get_ipv6_addr()[0]})
 
     CONFIGS.write_all()
 
