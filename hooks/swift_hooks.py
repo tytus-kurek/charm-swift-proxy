@@ -56,7 +56,8 @@ from charmhelpers.contrib.openstack.ip import (
 from charmhelpers.contrib.network.ip import (
     get_iface_for_address,
     get_netmask_for_address,
-    get_ipv6_addr
+    get_ipv6_addr,
+    format_ipv6_addr
 )
 
 extra_pkgs = [
@@ -152,9 +153,12 @@ def balance_rings():
 
         if cluster.is_clustered():
             hostname = config('vip')
+        elif config('prefer-ipv6'):
+            hostname = get_ipv6_addr()[0]
         else:
             hostname = unit_get('private-address')
 
+        hostname = format_ipv6_addr(hostname) or hostname
         rings_url = 'http://%s/%s' % (hostname, path)
         # notify storage nodes that there is a new ring to fetch.
         for relid in relation_ids('swift-storage'):
