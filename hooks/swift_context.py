@@ -121,7 +121,7 @@ class SwiftRingContext(OSContextGenerator):
             for unit in related_units(relid):
                 host = relation_get('private-address', unit, relid)
                 if config('prefer-ipv6'):
-                    host_ip = get_ipv6_addr()[0]
+                    host_ip = get_ipv6_addr(exc_list=[config('vip')])[0]
                 else:
                     host_ip = get_host_ip(host)
                 allowed_hosts.append(host_ip)
@@ -143,7 +143,7 @@ class SwiftIdentityContext(OSContextGenerator):
             import multiprocessing
             workers = multiprocessing.cpu_count()
         if config('prefer-ipv6'):
-            proxy_ip = '[%s]' % get_ipv6_addr()[0]
+            proxy_ip = '[%s]' % get_ipv6_addr(exc_list=[config('vip')])[0]
             memcached_ip = 'ip6-localhost'
         else:
             proxy_ip = get_host_ip(unit_get('private-address'))
