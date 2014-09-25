@@ -82,7 +82,7 @@ CONFIG_FILES = OrderedDict([
     }),
     (SWIFT_PROXY_CONF, {
         'hook_contexts': [swift_context.SwiftIdentityContext(),
-                          swift_context.SwiftIPv6Context()],
+                          context.BindHostContext()],
         'services': ['swift-proxy'],
     }),
     (HAPROXY_CONF, {
