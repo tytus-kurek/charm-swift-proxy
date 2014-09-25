@@ -246,15 +246,3 @@ class SwiftHashContext(OSContextGenerator):
             'swift_hash': get_swift_hash()
         }
         return ctxt
-
-
-class SwiftIPv6Context(OSContextGenerator):
-
-    def __call__(self):
-        ctxt = {}
-        if config('prefer-ipv6'):
-            ctxt['bind_ip'] = '::'
-        else:
-            ctxt['bind_ip'] = '0.0.0.0'
-
-        return ctxt

@@ -294,7 +294,8 @@ def ha_relation_joined():
             )
             vip_group.append(vip_key)
 
-    relation_set(groups={'grp_swift_vips': ' '.join(vip_group)})
+    if len(vip_group) >= 1:
+        relation_set(groups={'grp_swift_vips': ' '.join(vip_group)})
 
     init_services = {
         'res_swift_haproxy': 'haproxy'
