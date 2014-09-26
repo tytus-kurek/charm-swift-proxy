@@ -54,7 +54,8 @@ from charmhelpers.contrib.openstack.ip import (
 )
 from charmhelpers.contrib.network.ip import (
     get_iface_for_address,
-    get_netmask_for_address
+    get_netmask_for_address,
+    get_address_in_network
 )
 
 extra_pkgs = [
@@ -208,10 +209,19 @@ def config_changed():
         do_openstack_upgrade(CONFIGS)
     for r_id in relation_ids('identity-service'):
         keystone_joined(relid=r_id)
+    [cluster_joined(rid) for rid in relation_ids('cluster')]
+
+
+@hooks.hook('cluster-relation-joined')
+def cluster_joined(relation_id=None):
+    address = get_address_in_network(config('os-internal-network'),
+                                     unit_get('private-address'))
+    relation_set(relation_id=relation_id,
+                 relation_settings={'private-address': address})
 
 
 @hooks.hook('cluster-relation-changed',
-            'cluster-relation-joined')
+            'cluster-relation-departed')
 @restart_on_change(restart_map())
 def cluster_changed():
     CONFIGS.write_all()
