@@ -81,7 +81,7 @@ def generate_cert():
 
 class ApacheSSLContext(SSLContext):
     interfaces = ['https']
-    external_ports = [determine_apache_port(config('bind-port'))]
+    external_ports = [config('bind-port')]
     service_namespace = 'swift'
 
 
