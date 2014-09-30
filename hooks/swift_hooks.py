@@ -56,8 +56,10 @@ from charmhelpers.contrib.openstack.ip import (
 from charmhelpers.contrib.network.ip import (
     get_iface_for_address,
     get_netmask_for_address,
+    get_address_in_network,
     get_ipv6_addr,
-    format_ipv6_addr
+    format_ipv6_addr,
+    is_ipv6
 )
 
 extra_pkgs = [
@@ -77,10 +79,6 @@ def install():
     src = config('openstack-origin')
     if src != 'distro':
         openstack.configure_installation_source(src)
-
-    if config('prefer-ipv6'):
-        setup_ipv6()
-
     apt_update(fatal=True)
     rel = openstack.get_os_codename_install_source(src)
 
@@ -227,16 +225,22 @@ def config_changed():
         keystone_joined(relid=r_id)
 
 
-@hooks.hook('cluster-relation-changed',
-            'cluster-relation-joined')
+@hooks.hook('cluster-relation-joined')
+def cluster_joined(relation_id=None):
+    if config('prefer-ipv6'):
+        private_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
+    else:
+        private_addr = unit_get('private-address')
+
+    address = get_address_in_network(config('os-internal-network'),
+                                     private_addr)
+    relation_set(relation_id=relation_id,
+                 relation_settings={'private-address': address})
+
+
+@hooks.hook('cluster-relation-changed')
 @restart_on_change(restart_map())
 def cluster_changed():
-    if config('prefer-ipv6'):
-        for rid in relation_ids('cluster'):
-            addr = get_ipv6_addr(exc_list=[config('vip')])[0]
-            relation_set(relation_id=rid,
-                         relation_settings={'private-address': addr})
-
     CONFIGS.write_all()
 
 
@@ -272,15 +276,15 @@ def ha_relation_joined():
         'res_swift_haproxy': 'op monitor interval="5s"'
     }
 
-    if config('prefer-ipv6'):
-        res_swift_vip = 'ocf:heartbeat:IPv6addr'
-        vip_params = 'ipv6addr'
-    else:
-        res_swift_vip = 'ocf:heartbeat:IPaddr2'
-        vip_params = 'ip'
-
     vip_group = []
     for vip in vip.split():
+        if is_ipv6(vip):
+            res_swift_vip = 'ocf:heartbeat:IPv6addr'
+            vip_params = 'ipv6addr'
+        else:
+            res_swift_vip = 'ocf:heartbeat:IPaddr2'
+            vip_params = 'ip'
+
         iface = get_iface_for_address(vip)
         if iface is not None:
             vip_key = 'res_swift_{}_vip'.format(iface)
