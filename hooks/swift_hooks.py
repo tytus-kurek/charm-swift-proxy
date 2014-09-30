@@ -58,6 +58,8 @@ from charmhelpers.contrib.network.ip import (
     get_address_in_network
 )
 
+from charmhelpers.contrib.openstack.context import ADDRESS_TYPES
+
 extra_pkgs = [
     "haproxy",
     "python-jinja2"
@@ -214,10 +216,15 @@ def config_changed():
 
 @hooks.hook('cluster-relation-joined')
 def cluster_joined(relation_id=None):
-    address = get_address_in_network(config('os-internal-network'),
-                                     unit_get('private-address'))
-    relation_set(relation_id=relation_id,
-                 relation_settings={'private-address': address})
+    for addr_type in ADDRESS_TYPES:
+        address = get_address_in_network(
+            config('os-{}-network'.format(addr_type))
+        )
+        if address:
+            relation_set(
+                relation_id=relation_id,
+                relation_settings={'{}-address'.format(addr_type): address}
+            )
 
 
 @hooks.hook('cluster-relation-changed',
