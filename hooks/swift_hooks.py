@@ -24,7 +24,8 @@ from swift_utils import (
     add_to_ring,
     should_balance,
     do_openstack_upgrade,
-    write_rc_script
+    write_rc_script,
+    setup_ipv6
 )
 from swift_context import get_swift_hash
 
@@ -54,7 +55,11 @@ from charmhelpers.contrib.openstack.ip import (
 )
 from charmhelpers.contrib.network.ip import (
     get_iface_for_address,
-    get_netmask_for_address
+    get_netmask_for_address,
+    get_address_in_network,
+    get_ipv6_addr,
+    format_ipv6_addr,
+    is_ipv6
 )
 
 extra_pkgs = [
@@ -80,7 +85,6 @@ def install():
     pkgs = determine_packages(rel)
     apt_install(pkgs, fatal=True)
     apt_install(extra_pkgs, fatal=True)
-
     ensure_swift_dir()
     # initialize new storage rings.
     for ring in SWIFT_RINGS.iteritems():
@@ -147,9 +151,12 @@ def balance_rings():
 
         if cluster.is_clustered():
             hostname = config('vip')
+        elif config('prefer-ipv6'):
+            hostname = get_ipv6_addr(exc_list=[config('vip')])[0]
         else:
             hostname = unit_get('private-address')
 
+        hostname = format_ipv6_addr(hostname) or hostname
         rings_url = 'http://%s/%s' % (hostname, path)
         # notify storage nodes that there is a new ring to fetch.
         for relid in relation_ids('swift-storage'):
@@ -162,9 +169,14 @@ def balance_rings():
 @hooks.hook('swift-storage-relation-changed')
 @restart_on_change(restart_map())
 def storage_changed():
+    if config('prefer-ipv6'):
+        host_ip = '[%s]' % relation_get('private-address')
+    else:
+        host_ip = openstack.get_host_ip(relation_get('private-address'))
+
     zone = get_zone(config('zone-assignment'))
     node_settings = {
-        'ip': openstack.get_host_ip(relation_get('private-address')),
+        'ip': host_ip,
         'zone': zone,
         'account_port': relation_get('account_port'),
         'object_port': relation_get('object_port'),
@@ -200,6 +212,9 @@ def storage_broken():
 @hooks.hook('config-changed')
 @restart_on_change(restart_map())
 def config_changed():
+    if config('prefer-ipv6'):
+        setup_ipv6()
+
     configure_https()
     open_port(config('bind-port'))
     # Determine whether or not we should do an upgrade, based on the
@@ -210,8 +225,20 @@ def config_changed():
         keystone_joined(relid=r_id)
 
 
-@hooks.hook('cluster-relation-changed',
-            'cluster-relation-joined')
+@hooks.hook('cluster-relation-joined')
+def cluster_joined(relation_id=None):
+    if config('prefer-ipv6'):
+        private_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
+    else:
+        private_addr = unit_get('private-address')
+
+    address = get_address_in_network(config('os-internal-network'),
+                                     private_addr)
+    relation_set(relation_id=relation_id,
+                 relation_settings={'private-address': address})
+
+
+@hooks.hook('cluster-relation-changed')
 @restart_on_change(restart_map())
 def cluster_changed():
     CONFIGS.write_all()
@@ -251,13 +278,21 @@ def ha_relation_joined():
 
     vip_group = []
     for vip in vip.split():
+        if is_ipv6(vip):
+            res_swift_vip = 'ocf:heartbeat:IPv6addr'
+            vip_params = 'ipv6addr'
+        else:
+            res_swift_vip = 'ocf:heartbeat:IPaddr2'
+            vip_params = 'ip'
+
         iface = get_iface_for_address(vip)
         if iface is not None:
             vip_key = 'res_swift_{}_vip'.format(iface)
-            resources[vip_key] = 'ocf:heartbeat:IPaddr2'
+            resources[vip_key] = res_swift_vip
             resource_params[vip_key] = (
-                'params ip="{vip}" cidr_netmask="{netmask}"'
-                ' nic="{iface}"'.format(vip=vip,
+                'params {ip}="{vip}" cidr_netmask="{netmask}"'
+                ' nic="{iface}"'.format(ip=vip_params,
+                                        vip=vip,
                                         iface=iface,
                                         netmask=get_netmask_for_address(vip))
             )
