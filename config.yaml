@@ -63,28 +63,6 @@ options:
     type: string
     description: |
       Base64 encoded SSL key to use with certificate specified as ssl_cert.
-  # Locally generated CA Cert info (only use without keystone)
-  # These options are deprecated and will be removed sometime
-  use-https:
-    default: "yes"
-    type: string
-    description: Whether to listen on HTTPS
-  country:
-    default: US
-    type: string
-    description: Country
-  state:
-    default: ST
-    type: string
-    description: State
-  locale:
-    default: City
-    type: string
-    description: Locale
-  common-name:
-    default: CN
-    type: string
-    description: Common Name
   # General Swift Proxy configuration
   bind-port:
     default: 8080
