@@ -62,6 +62,8 @@ from charmhelpers.contrib.network.ip import (
     is_ipv6
 )
 
+from charmhelpers.contrib.openstack.context import ADDRESS_TYPES
+
 extra_pkgs = [
     "haproxy",
     "python-jinja2"
@@ -223,22 +225,28 @@ def config_changed():
         do_openstack_upgrade(CONFIGS)
     for r_id in relation_ids('identity-service'):
         keystone_joined(relid=r_id)
+    [cluster_joined(rid) for rid in relation_ids('cluster')]
 
 
 @hooks.hook('cluster-relation-joined')
 def cluster_joined(relation_id=None):
+    for addr_type in ADDRESS_TYPES:
+        address = get_address_in_network(
+            config('os-{}-network'.format(addr_type))
+        )
+        if address:
+            relation_set(
+                relation_id=relation_id,
+                relation_settings={'{}-address'.format(addr_type): address}
+            )
     if config('prefer-ipv6'):
         private_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
-    else:
-        private_addr = unit_get('private-address')
-
-    address = get_address_in_network(config('os-internal-network'),
-                                     private_addr)
-    relation_set(relation_id=relation_id,
-                 relation_settings={'private-address': address})
+        relation_set(relation_id=relation_id,
+                     relation_settings={'private-address': private_addr})
 
 
-@hooks.hook('cluster-relation-changed')
+@hooks.hook('cluster-relation-changed',
+            'cluster-relation-departed')
 @restart_on_change(restart_map())
 def cluster_changed():
     CONFIGS.write_all()

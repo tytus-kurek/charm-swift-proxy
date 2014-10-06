@@ -11,7 +11,6 @@ from charmhelpers.contrib.openstack.context import (
     OSContextGenerator,
     ApacheSSLContext as SSLContext,
     context_complete,
-    CA_CERT_PATH
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -26,14 +25,6 @@ from charmhelpers.contrib.network.ip import (
 from charmhelpers.contrib.openstack.utils import get_host_ip
 import subprocess
 import os
-
-
-from charmhelpers.contrib.hahelpers.apache import (
-    get_cert,
-    get_ca_cert,
-)
-
-from base64 import b64decode, b64encode
 
 
 class HAProxyContext(OSContextGenerator):
@@ -57,60 +48,10 @@ class HAProxyContext(OSContextGenerator):
 WWW_DIR = '/var/www/swift-rings'
 
 
-def generate_cert():
-    '''
-    Generates a self signed certificate and key using the
-    provided charm configuration data.
-
-    returns: tuple of (cert, key)
-    '''
-    CERT = '/etc/swift/ssl.cert'
-    KEY = '/etc/swift/ssl.key'
-    if not os.path.exists(CERT) and not os.path.exists(KEY):
-        subj = '/C=%s/ST=%s/L=%s/CN=%s' %\
-            (config('country'), config('state'),
-             config('locale'), config('common-name'))
-        cmd = ['openssl', 'req', '-new', '-x509', '-nodes',
-               '-out', CERT, '-keyout', KEY,
-               '-subj', subj]
-        subprocess.check_call(cmd)
-        os.chmod(KEY, 0o600)
-    # Slurp as base64 encoded - makes handling easier up the stack
-    with open(CERT, 'r') as cfile:
-        ssl_cert = b64encode(cfile.read())
-    with open(KEY, 'r') as kfile:
-        ssl_key = b64encode(kfile.read())
-    return (ssl_cert, ssl_key)
-
-
 class ApacheSSLContext(SSLContext):
     interfaces = ['https']
-    external_ports = [determine_apache_port(config('bind-port'))]
+    external_ports = [config('bind-port')]
     service_namespace = 'swift'
-
-    def configure_cert(self):
-        if not os.path.isdir('/etc/apache2/ssl'):
-            os.mkdir('/etc/apache2/ssl')
-        ssl_dir = os.path.join('/etc/apache2/ssl/', self.service_namespace)
-        if not os.path.isdir(ssl_dir):
-            os.mkdir(ssl_dir)
-        cert, key = get_cert()
-        # Swift specific - generate a cert by default if not using
-        # a) user supplied cert or b) keystone signed cert
-        if None in [cert, key]:
-            cert, key = generate_cert()
-        with open(os.path.join(ssl_dir, 'cert'), 'w') as cert_out:
-            cert_out.write(b64decode(cert))
-        with open(os.path.join(ssl_dir, 'key'), 'w') as key_out:
-            key_out.write(b64decode(key))
-        ca_cert = get_ca_cert()
-        if ca_cert:
-            with open(CA_CERT_PATH, 'w') as ca_out:
-                ca_out.write(b64decode(ca_cert))
-            subprocess.check_call(['update-ca-certificates'])
-
-    def __call__(self):
-        return super(ApacheSSLContext, self).__call__()
 
 
 class SwiftRingContext(OSContextGenerator):
