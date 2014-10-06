@@ -4,7 +4,8 @@ from charmhelpers.core.hookenv import (
     relation_ids,
     related_units,
     relation_get,
-    unit_get
+    unit_get,
+    service_name
 )
 
 from charmhelpers.contrib.openstack.context import (
@@ -26,6 +27,7 @@ from charmhelpers.contrib.network.ip import (
 from charmhelpers.contrib.openstack.utils import get_host_ip
 import subprocess
 import os
+import uuid
 
 
 from charmhelpers.contrib.hahelpers.apache import (
@@ -230,10 +232,8 @@ def get_swift_hash():
         with open(SWIFT_HASH_FILE, 'w') as hashfile:
             hashfile.write(swift_hash)
     else:
-        cmd = ['od', '-t', 'x8', '-N', '8', '-A', 'n']
-        rand = open('/dev/random', 'r')
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=rand)
-        swift_hash = p.communicate()[0].strip()
+        swift_hash = str(uuid.uuid3(uuid.UUID(os.environ.get("JUJU_ENV_UUID")),
+                                    service_name()))
         with open(SWIFT_HASH_FILE, 'w') as hashfile:
             hashfile.write(swift_hash)
     return swift_hash
