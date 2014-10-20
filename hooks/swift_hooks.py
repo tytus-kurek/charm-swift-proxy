@@ -280,7 +280,7 @@ def fetch_swift_builders(broker_url):
         url = '%s/%s.builder' % (broker_url, server)
         log('Fetching %s.' % url)
         cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
-               "%s/%s.builder" (target, server)]
+               "%s/%s.builder" % (target, server)]
         subprocess.check_call(cmd)
 
 
