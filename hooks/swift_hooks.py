@@ -224,11 +224,13 @@ def storage_changed():
 
         # Notify peers that builders are available
         for rid in relation_ids('cluster'):
+            log("Setting builder-broker addr for rid '%s'" % (rid))
             relation_set(relation_id=rid,
                          relation_settings={'builder-broker': get_hostaddr()})
     else:
-        if not builders_synced():
-            service_stop('swift-proxy')
+        log("New storage relation joined - stopping proxy until ring builder "
+            "synced")
+        service_stop('swift-proxy')
 
 
 @hooks.hook('swift-storage-relation-broken')
@@ -270,19 +272,6 @@ def cluster_joined(relation_id=None):
     else:
         private_addr = unit_get('private-address')
 
-    # If not the leader, see if there are any builder files we can sync from
-    # the leader.
-    if not cluster.is_elected_leader(SWIFT_HA_RES):
-        settings = relation_get()
-        broker = settings.get('builder-broker', None)
-        if broker:
-            fetch_swift_builders(broker)
-
-            if builders_synced():
-                if should_balance([r for r in SWIFT_RINGS.itervalues()]):
-                    balance_rings()
-                service_start('swift-proxy')
-
 
 def fetch_swift_builders(broker_url):
     log('Fetching swift builders from proxy @ %s.' % broker_url)
@@ -299,6 +288,20 @@ def fetch_swift_builders(broker_url):
 @restart_on_change(restart_map())
 def cluster_changed():
     CONFIGS.write_all()
+
+    # If not the leader, see if there are any builder files we can sync from
+    # the leader.
+    if not cluster.is_elected_leader(SWIFT_HA_RES):
+        settings = relation_get()
+        broker = settings.get('builder-broker', None)
+        if broker:
+            fetch_swift_builders(broker)
+
+            if builders_synced():
+                if should_balance([r for r in SWIFT_RINGS.itervalues()]):
+                    balance_rings()
+                log('Ring builders synced - starting swift-poxy')
+                service_start('swift-proxy')
 
 
 @hooks.hook('ha-relation-changed')
