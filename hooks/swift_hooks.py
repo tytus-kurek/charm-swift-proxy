@@ -35,7 +35,9 @@ from charmhelpers.core.hookenv import (
     relation_set,
     relation_ids,
     relation_get,
-    log, ERROR,
+    log,
+    WARNING,
+    ERROR,
     Hooks, UnregisteredHookError,
     open_port
 )
@@ -92,6 +94,7 @@ def install():
     ensure_swift_dir()
 
     if cluster.is_elected_leader(SWIFT_HA_RES):
+        log("Leader established, generating ring builders")
         # initialize new storage rings.
         for ring in SWIFT_RINGS.iteritems():
             initialize_ring(ring[1],
@@ -211,6 +214,7 @@ def storage_changed():
     CONFIGS.write_all()
 
     if cluster.is_elected_leader(SWIFT_HA_RES):
+        log("Leader established, updating ring builders")
         # allow for multiple devs per unit, passed along as a : separated list
         devs = relation_get('device').split(':')
         for dev in devs:
@@ -298,7 +302,11 @@ def cluster_changed():
         if broker:
             path = os.path.basename(get_www_dir())
             broker_url = 'http://%s/%s' % (broker, path)
-            fetch_swift_builders(broker_url)
+            try:
+                fetch_swift_builders(broker_url)
+            except subprocess.CalledProcessError:
+                log("Ring builder sync failed", level=WARNING)
+                return None
 
             if builders_synced():
                 if should_balance([r for r in SWIFT_RINGS.itervalues()]):
