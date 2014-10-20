@@ -199,6 +199,8 @@ def storage_changed():
         host_ip = openstack.get_host_ip(relation_get('private-address'))
 
     if cluster.is_elected_leader(SWIFT_HA_RES):
+        log("Leader established, updating ring builders")
+
         # Notify peers that builders are available
         for rid in relation_ids('cluster'):
             log("Setting builder-broker addr for rid '%s'" % (rid))
@@ -221,7 +223,8 @@ def storage_changed():
         for k in ['zone', 'account_port', 'object_port', 'container_port']:
             node_settings[k] = int(node_settings[k])
 
-        log("Leader established, updating ring builders")
+        CONFIGS.write_all()
+
         # allow for multiple devs per unit, passed along as a : separated list
         devs = relation_get('device').split(':')
         for dev in devs:
@@ -232,8 +235,6 @@ def storage_changed():
 
         if should_balance([r for r in SWIFT_RINGS.itervalues()]):
             balance_rings()
-
-        CONFIGS.write_all()
     else:
         log("New storage relation joined - stopping proxy until ring builder "
             "synced")
