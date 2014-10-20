@@ -41,6 +41,8 @@ from charmhelpers.core.hookenv import (
 )
 from charmhelpers.core.host import (
     service_restart,
+    service_stop,
+    service_start,
     restart_on_change
 )
 from charmhelpers.fetch import (
@@ -88,12 +90,14 @@ def install():
     apt_install(pkgs, fatal=True)
     apt_install(extra_pkgs, fatal=True)
     ensure_swift_dir()
-    # initialize new storage rings.
-    for ring in SWIFT_RINGS.iteritems():
-        initialize_ring(ring[1],
-                        config('partition-power'),
-                        config('replicas'),
-                        config('min-hours'))
+
+    if cluster.is_elected_leader(SWIFT_HA_RES):
+        # initialize new storage rings.
+        for ring in SWIFT_RINGS.iteritems():
+            initialize_ring(ring[1],
+                            config('partition-power'),
+                            config('replicas'),
+                            config('min-hours'))
 
     # configure a directory on webserver for distributing rings.
     www_dir = get_www_dir()
@@ -128,6 +132,21 @@ def keystone_changed():
     configure_https()
 
 
+def get_hostaddr():
+    if config('prefer-ipv6'):
+        return get_ipv6_addr(exc_list=[config('vip')])[0]
+
+    return unit_get('private-address')
+
+
+def builders_synced():
+    for ring in SWIFT_RINGS.itervalues():
+        if not os.path.exists(ring):
+            return False
+
+    return True
+
+
 def balance_rings():
     '''handle doing ring balancing and distribution.'''
     new_ring = False
@@ -153,10 +172,8 @@ def balance_rings():
 
         if cluster.is_clustered():
             hostname = config('vip')
-        elif config('prefer-ipv6'):
-            hostname = get_ipv6_addr(exc_list=[config('vip')])[0]
         else:
-            hostname = unit_get('private-address')
+            hostname = get_hostaddr()
 
         hostname = format_ipv6_addr(hostname) or hostname
         rings_url = 'http://%s/%s' % (hostname, path)
@@ -193,16 +210,25 @@ def storage_changed():
 
     CONFIGS.write_all()
 
-    # allow for multiple devs per unit, passed along as a : separated list
-    devs = relation_get('device').split(':')
-    for dev in devs:
-        node_settings['device'] = dev
-        for ring in SWIFT_RINGS.itervalues():
-            if not exists_in_ring(ring, node_settings):
-                add_to_ring(ring, node_settings)
+    if cluster.is_elected_leader(SWIFT_HA_RES):
+        # allow for multiple devs per unit, passed along as a : separated list
+        devs = relation_get('device').split(':')
+        for dev in devs:
+            node_settings['device'] = dev
+            for ring in SWIFT_RINGS.itervalues():
+                if not exists_in_ring(ring, node_settings):
+                    add_to_ring(ring, node_settings)
 
-    if should_balance([r for r in SWIFT_RINGS.itervalues()]):
-        balance_rings()
+        if should_balance([r for r in SWIFT_RINGS.itervalues()]):
+            balance_rings()
+
+        # Notify peers that builders are available
+        for rid in relation_ids('cluster'):
+            relation_set(relation_id=rid,
+                         relation_settings={'builder-broker': get_hostaddr()})
+    else:
+        if not builders_synced():
+            service_stop('swift-proxy')
 
 
 @hooks.hook('swift-storage-relation-broken')
@@ -231,18 +257,41 @@ def config_changed():
 @hooks.hook('cluster-relation-joined')
 def cluster_joined(relation_id=None):
     for addr_type in ADDRESS_TYPES:
-        address = get_address_in_network(
-            config('os-{}-network'.format(addr_type))
-        )
+        netaddr_cfg = 'os-{}-network'.format(addr_type)
+        address = get_address_in_network(config(netaddr_cfg))
         if address:
-            relation_set(
-                relation_id=relation_id,
-                relation_settings={'{}-address'.format(addr_type): address}
-            )
+            settings = {'{}-address'.format(addr_type): address}
+            relation_set(relation_id=relation_id, relation_settings=settings)
+
     if config('prefer-ipv6'):
         private_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
         relation_set(relation_id=relation_id,
                      relation_settings={'private-address': private_addr})
+    else:
+        private_addr = unit_get('private-address')
+
+    # If not the leader, see if there are any builder files we can sync from
+    # the leader.
+    if not cluster.is_elected_leader(SWIFT_HA_RES):
+        settings = relation_get()
+        broker = settings.get('builder-broker', None)
+        if broker:
+            fetch_swift_builders(broker)
+
+            if builders_synced():
+                if should_balance([r for r in SWIFT_RINGS.itervalues()]):
+                    balance_rings()
+                service_start('swift-proxy')
+
+
+def fetch_swift_builders(broker_url):
+    log('Fetching swift builders from proxy @ %s.' % broker_url)
+    target = '/etc/swift/'
+    for server in ['account', 'object', 'container']:
+        url = '%s/%s.builder' % (broker_url, server)
+        log('Fetching %s.' % url)
+        cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O', target]
+        subprocess.check_call(cmd)
 
 
 @hooks.hook('cluster-relation-changed',
