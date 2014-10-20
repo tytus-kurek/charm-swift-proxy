@@ -198,24 +198,29 @@ def storage_changed():
     else:
         host_ip = openstack.get_host_ip(relation_get('private-address'))
 
-    zone = get_zone(config('zone-assignment'))
-    node_settings = {
-        'ip': host_ip,
-        'zone': zone,
-        'account_port': relation_get('account_port'),
-        'object_port': relation_get('object_port'),
-        'container_port': relation_get('container_port'),
-    }
-    if None in node_settings.itervalues():
-        log('storage_changed: Relation not ready.')
-        return None
-
-    for k in ['zone', 'account_port', 'object_port', 'container_port']:
-        node_settings[k] = int(node_settings[k])
-
-    CONFIGS.write_all()
-
     if cluster.is_elected_leader(SWIFT_HA_RES):
+        # Notify peers that builders are available
+        for rid in relation_ids('cluster'):
+            log("Setting builder-broker addr for rid '%s'" % (rid))
+            relation_set(relation_id=rid,
+                         relation_settings={'builder-broker': get_hostaddr()})
+
+        zone = get_zone(config('zone-assignment'))
+        node_settings = {
+            'ip': host_ip,
+            'zone': zone,
+            'account_port': relation_get('account_port'),
+            'object_port': relation_get('object_port'),
+            'container_port': relation_get('container_port'),
+        }
+
+        if None in node_settings.itervalues():
+            log('storage_changed: Relation not ready.')
+            return None
+
+        for k in ['zone', 'account_port', 'object_port', 'container_port']:
+            node_settings[k] = int(node_settings[k])
+
         log("Leader established, updating ring builders")
         # allow for multiple devs per unit, passed along as a : separated list
         devs = relation_get('device').split(':')
@@ -228,11 +233,7 @@ def storage_changed():
         if should_balance([r for r in SWIFT_RINGS.itervalues()]):
             balance_rings()
 
-        # Notify peers that builders are available
-        for rid in relation_ids('cluster'):
-            log("Setting builder-broker addr for rid '%s'" % (rid))
-            relation_set(relation_id=rid,
-                         relation_settings={'builder-broker': get_hostaddr()})
+        CONFIGS.write_all()
     else:
         log("New storage relation joined - stopping proxy until ring builder "
             "synced")
@@ -314,7 +315,9 @@ def cluster_changed():
             if builders_synced():
                 if should_balance([r for r in SWIFT_RINGS.itervalues()]):
                     balance_rings()
+
                 log('Ring builders synced - starting swift-poxy')
+                CONFIGS.write_all()
                 service_start('swift-proxy')
 
 
