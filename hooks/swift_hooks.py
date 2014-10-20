@@ -279,7 +279,8 @@ def fetch_swift_builders(broker_url):
     for server in ['account', 'object', 'container']:
         url = '%s/%s.builder' % (broker_url, server)
         log('Fetching %s.' % url)
-        cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O', target]
+        cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
+               "%s/%s.builder" (target, server)]
         subprocess.check_call(cmd)
 
 
@@ -295,7 +296,9 @@ def cluster_changed():
         settings = relation_get()
         broker = settings.get('builder-broker', None)
         if broker:
-            fetch_swift_builders(broker)
+            path = os.path.basename(get_www_dir())
+            broker_url = 'http://%s/%s' % (broker, path)
+            fetch_swift_builders(broker_url)
 
             if builders_synced():
                 if should_balance([r for r in SWIFT_RINGS.itervalues()]):
