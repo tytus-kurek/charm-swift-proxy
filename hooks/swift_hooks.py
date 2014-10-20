@@ -163,8 +163,10 @@ def balance_rings():
     www_dir = get_www_dir()
     for ring, builder_path in SWIFT_RINGS.iteritems():
         ringfile = '%s.ring.gz' % ring
-        shutil.copyfile(os.path.join(SWIFT_CONF_DIR, ringfile), www_dir)
-        shutil.copyfile(builder_path, www_dir)
+        shutil.copyfile(os.path.join(SWIFT_CONF_DIR, ringfile),
+                        os.path.join(www_dir, ringfile))
+        shutil.copyfile(builder_path,
+                        os.path.join(www_dir, os.path.basename(builder_path)))
 
     if cluster.eligible_leader(SWIFT_HA_RES):
         msg = 'Broadcasting notification to all storage nodes that new '\
@@ -305,7 +307,8 @@ def cluster_changed():
             try:
                 fetch_swift_builders(broker_url)
             except subprocess.CalledProcessError:
-                log("Ring builder sync failed", level=WARNING)
+                log("Ring builder sync failed, builders not yet available - "
+                    "leader not ready?", level=WARNING)
                 return None
 
             if builders_synced():
