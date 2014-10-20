@@ -158,10 +158,10 @@ def balance_rings():
         return
 
     www_dir = get_www_dir()
-    for ring in SWIFT_RINGS.keys():
-        f = '%s.ring.gz' % ring
-        shutil.copyfile(os.path.join(SWIFT_CONF_DIR, f),
-                        os.path.join(www_dir, f))
+    for ring, builder_path in SWIFT_RINGS.iteritems():
+        ringfile = '%s.ring.gz' % ring
+        shutil.copyfile(os.path.join(SWIFT_CONF_DIR, ringfile), www_dir)
+        shutil.copyfile(builder_path, www_dir)
 
     if cluster.eligible_leader(SWIFT_HA_RES):
         msg = 'Broadcasting notification to all storage nodes that new '\
@@ -275,7 +275,7 @@ def cluster_joined(relation_id=None):
 
 def fetch_swift_builders(broker_url):
     log('Fetching swift builders from proxy @ %s.' % broker_url)
-    target = '/etc/swift/'
+    target = '/etc/swift'
     for server in ['account', 'object', 'container']:
         url = '%s/%s.builder' % (broker_url, server)
         log('Fetching %s.' % url)
