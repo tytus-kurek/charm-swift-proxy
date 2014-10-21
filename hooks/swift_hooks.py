@@ -36,6 +36,7 @@ from charmhelpers.core.hookenv import (
     relation_ids,
     relation_get,
     log,
+    INFO,
     WARNING,
     ERROR,
     Hooks, UnregisteredHookError,
@@ -145,6 +146,7 @@ def get_hostaddr():
 def builders_synced():
     for ring in SWIFT_RINGS.itervalues():
         if not os.path.exists(ring):
+            log("Builder not yet synced - %s" % (ring))
             return False
 
     return True
@@ -157,6 +159,7 @@ def balance_rings():
         if balance_ring(ring):
             log('Balanced ring %s' % ring)
             new_ring = True
+
     if not new_ring:
         return
 
@@ -229,6 +232,9 @@ def storage_changed():
 
         if should_balance([r for r in SWIFT_RINGS.itervalues()]):
             balance_rings()
+        else:
+            log("Not yet ready to balance rings - insufficient replicas?",
+                level=INFO)
 
         # Notify peers that builders are available
         for rid in relation_ids('cluster'):
@@ -314,12 +320,19 @@ def cluster_changed():
                 return None
 
             if builders_synced():
+                log("Ring builders synced - balancing rings and starting "
+                    "proxy")
                 if should_balance([r for r in SWIFT_RINGS.itervalues()]):
                     balance_rings()
+                else:
+                    log("Not yet ready to balance rings - "
+                        "insufficient replicas?", level=INFO)
 
-                log('Ring builders synced - starting swift-poxy')
                 CONFIGS.write_all()
                 service_start('swift-proxy')
+            else:
+                log("Not all builders synced yet - waiting for peer sync "
+                    "before starting proxy", level=INFO)
 
 
 @hooks.hook('ha-relation-changed')
