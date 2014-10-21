@@ -287,14 +287,27 @@ def cluster_joined(relation_id=None):
         private_addr = unit_get('private-address')
 
 
-def fetch_swift_builders(broker_url):
-    log('Fetching swift builders from proxy @ %s.' % broker_url)
+def sync_proxy_rings(broker_url):
+    """The leader proxy is responsible for intialising, updating and
+    rebalancing the ring. Once the leader is ready the rings must then be
+    synced into each other proxy unit.
+
+    Note that we sync the ring builder and .gz files since the builder itself
+    is linked to the underlying .gz ring.
+    """
+    log('Fetching swift rings & builders from proxy @ %s.' % broker_url)
     target = '/etc/swift'
     for server in ['account', 'object', 'container']:
         url = '%s/%s.builder' % (broker_url, server)
         log('Fetching %s.' % url)
         cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
                "%s/%s.builder" % (target, server)]
+        subprocess.check_call(cmd)
+
+        url = '%s/%s.ring.gz' % (broker_url, server)
+        log('Fetching %s.' % url)
+        cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
+               '%s/%s.ring.gz' % (target, server)]
         subprocess.check_call(cmd)
 
 
@@ -313,7 +326,7 @@ def cluster_changed():
             path = os.path.basename(get_www_dir())
             broker_url = 'http://%s/%s' % (broker, path)
             try:
-                fetch_swift_builders(broker_url)
+                sync_proxy_rings(broker_url)
             except subprocess.CalledProcessError:
                 log("Ring builder sync failed, builders not yet available - "
                     "leader not ready?", level=WARNING)
