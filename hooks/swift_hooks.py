@@ -201,12 +201,6 @@ def storage_changed():
     if cluster.is_elected_leader(SWIFT_HA_RES):
         log("Leader established, updating ring builders")
 
-        # Notify peers that builders are available
-        for rid in relation_ids('cluster'):
-            log("Setting builder-broker addr for rid '%s'" % (rid))
-            relation_set(relation_id=rid,
-                         relation_settings={'builder-broker': get_hostaddr()})
-
         zone = get_zone(config('zone-assignment'))
         node_settings = {
             'ip': host_ip,
@@ -235,6 +229,12 @@ def storage_changed():
 
         if should_balance([r for r in SWIFT_RINGS.itervalues()]):
             balance_rings()
+
+        # Notify peers that builders are available
+        for rid in relation_ids('cluster'):
+            log("Notifying peer that ring builder is ready (rid='%s')" % (rid))
+            relation_set(relation_id=rid,
+                         relation_settings={'builder-broker': get_hostaddr()})
     else:
         log("New storage relation joined - stopping proxy until ring builder "
             "synced")

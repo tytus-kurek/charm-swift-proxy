@@ -349,16 +349,15 @@ def balance_ring(ring_path):
 
 def should_balance(rings):
     '''Based on zones vs min. replicas, determine whether or not the rings
-       should be balanaced during initial configuration.'''
-    do_rebalance = True
+       should be balanced during initial configuration.'''
     for ring in rings:
-        zones = []
-        r = _load_builder(ring).to_dict()
-        replicas = r['replicas']
-        zones = [d['zone'] for d in r['devs']]
+        builder = _load_builder(ring).to_dict()
+        replicas = builder['replicas']
+        zones = [dev['zone'] for dev in builder['devs']]
         if len(set(zones)) < replicas:
-            do_rebalance = False
-    return do_rebalance
+            return False
+
+    return True
 
 
 def do_openstack_upgrade(configs):
