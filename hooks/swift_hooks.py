@@ -154,6 +154,10 @@ def builders_synced():
 
 def balance_rings():
     '''handle doing ring balancing and distribution.'''
+    if not cluster.eligible_leader(SWIFT_HA_RES):
+        log("Balance rings called by non-leader - skipping", level=WARNING)
+        return
+
     new_ring = False
     for ring in SWIFT_RINGS.itervalues():
         if balance_ring(ring):
@@ -161,7 +165,7 @@ def balance_rings():
             new_ring = True
 
     if not new_ring:
-        log("Rings unchanged by rebalance", level=INFO)
+        log("Rings unchanged by rebalance - skipping sync", level=INFO)
         return
 
     www_dir = get_www_dir()
@@ -172,24 +176,31 @@ def balance_rings():
         shutil.copyfile(builder_path,
                         os.path.join(www_dir, os.path.basename(builder_path)))
 
-    if cluster.eligible_leader(SWIFT_HA_RES):
-        msg = 'Broadcasting notification to all storage nodes that new '\
-              'ring is ready for consumption.'
-        log(msg)
-        path = os.path.basename(www_dir)
-        trigger = uuid.uuid4()
+    if cluster.is_clustered():
+        hostname = config('vip')
+    else:
+        hostname = get_hostaddr()
 
-        if cluster.is_clustered():
-            hostname = config('vip')
-        else:
-            hostname = get_hostaddr()
+    hostname = format_ipv6_addr(hostname) or hostname
 
-        hostname = format_ipv6_addr(hostname) or hostname
-        rings_url = 'http://%s/%s' % (hostname, path)
-        # notify storage nodes that there is a new ring to fetch.
-        for relid in relation_ids('swift-storage'):
-            relation_set(relation_id=relid, swift_hash=get_swift_hash(),
-                         rings_url=rings_url, trigger=trigger)
+    # Notify peers that builders are available
+    for rid in relation_ids('cluster'):
+        log("Notifying peer(s) that rings are ready for sync (rid='%s')" %
+            (rid))
+        relation_set(relation_id=rid,
+                     relation_settings={'builder-broker': hostname})
+
+    log('Broadcasting notification to all storage nodes that new ring is '
+        'ready for consumption.')
+
+    path = os.path.basename(www_dir)
+    trigger = uuid.uuid4()
+
+    rings_url = 'http://%s/%s' % (hostname, path)
+    # notify storage nodes that there is a new ring to fetch.
+    for relid in relation_ids('swift-storage'):
+        relation_set(relation_id=relid, swift_hash=get_swift_hash(),
+                     rings_url=rings_url, trigger=trigger)
 
     service_restart('swift-proxy')
 
@@ -233,16 +244,17 @@ def storage_changed():
 
         if should_balance([r for r in SWIFT_RINGS.itervalues()]):
             balance_rings()
+
+            # Notify peers that builders are available
+            for rid in relation_ids('cluster'):
+                log("Notifying peer(s) that ring builder is ready (rid='%s')" %
+                    (rid))
+                relation_set(relation_id=rid,
+                             relation_settings={'builder-broker':
+                                                get_hostaddr()})
         else:
             log("Not yet ready to balance rings - insufficient replicas?",
                 level=INFO)
-
-        # Notify peers that builders are available
-        for rid in relation_ids('cluster'):
-            log("Notifying peer(s) that ring builder is ready (rid='%s')" %
-                (rid))
-            relation_set(relation_id=rid,
-                         relation_settings={'builder-broker': get_hostaddr()})
     else:
         log("New storage relation joined - stopping proxy until ring builder "
             "synced")
@@ -337,11 +349,6 @@ def cluster_changed():
             if builders_synced():
                 log("Ring builders synced - balancing rings and starting "
                     "proxy")
-                if should_balance([r for r in SWIFT_RINGS.itervalues()]):
-                    balance_rings()
-                else:
-                    log("Not yet ready to balance rings - insufficient "
-                        "replicas?", level=INFO)
 
                 CONFIGS.write_all()
                 service_start('swift-proxy')
