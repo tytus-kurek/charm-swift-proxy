@@ -161,6 +161,7 @@ def balance_rings():
             new_ring = True
 
     if not new_ring:
+        log("Rings unchanged by rebalance", level=INFO)
         return
 
     www_dir = get_www_dir()
@@ -238,7 +239,8 @@ def storage_changed():
 
         # Notify peers that builders are available
         for rid in relation_ids('cluster'):
-            log("Notifying peer that ring builder is ready (rid='%s')" % (rid))
+            log("Notifying peer(s) that ring builder is ready (rid='%s')" %
+                (rid))
             relation_set(relation_id=rid,
                          relation_settings={'builder-broker': get_hostaddr()})
     else:
@@ -338,8 +340,8 @@ def cluster_changed():
                 if should_balance([r for r in SWIFT_RINGS.itervalues()]):
                     balance_rings()
                 else:
-                    log("Not yet ready to balance rings - "
-                        "insufficient replicas?", level=INFO)
+                    log("Not yet ready to balance rings - insufficient "
+                        "replicas?", level=INFO)
 
                 CONFIGS.write_all()
                 service_start('swift-proxy')
