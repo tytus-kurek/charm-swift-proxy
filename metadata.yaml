@@ -7,6 +7,9 @@ description: |
 categories:
     - cache-proxy
 provides:
+  nrpe-external-master:
+    interface: nrpe-external-master
+    scope: container
   object-store:
     interface: swift-proxy
 requires:

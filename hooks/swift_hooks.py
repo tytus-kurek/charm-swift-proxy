@@ -64,6 +64,8 @@ from charmhelpers.contrib.network.ip import (
 
 from charmhelpers.contrib.openstack.context import ADDRESS_TYPES
 
+from charmhelpers.contrib.charmsupport.nrpe import NRPE
+
 extra_pkgs = [
     "haproxy",
     "python-jinja2"
@@ -219,6 +221,7 @@ def config_changed():
 
     configure_https()
     open_port(config('bind-port'))
+    update_nrpe_config()
     # Determine whether or not we should do an upgrade, based on the
     # the version offered in keyston-release.
     if (openstack.openstack_upgrade_available('python-swift')):
@@ -347,6 +350,20 @@ def configure_https():
         keystone_joined(relid=rid)
 
     write_rc_script()
+
+
+@hooks.hook('nrpe-external-master-relation-joined', 'nrpe-external-master-relation-changed')
+def update_nrpe_config():
+    apt_install('python-dbus')
+    nrpe = NRPE()
+    
+    nrpe.add_check(
+        shortname='swift-proxy',
+        description='swift-proxy process',
+        check_cmd = 'check_upstart_job swift-proxy',
+        )
+
+    nrpe.write()
 
 
 def main():
