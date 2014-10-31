@@ -35,6 +35,7 @@ from charmhelpers.core.hookenv import (
     relation_set,
     relation_ids,
     relation_get,
+    relations_of_type,
     log, ERROR,
     Hooks, UnregisteredHookError,
     open_port
@@ -355,7 +356,13 @@ def configure_https():
 @hooks.hook('nrpe-external-master-relation-joined', 'nrpe-external-master-relation-changed')
 def update_nrpe_config():
     apt_install('python-dbus')
-    nrpe = NRPE()
+    # Find out if nrpe set nagios_hostname
+    hostname = None
+    for rel in relations_of_type('nrpe-external-master'):
+        if 'nagios_hostname' in rel:
+            hostname = rel['nagios_hostname']
+            break
+    nrpe = NRPE(hostname=hostname)
     
     nrpe.add_check(
         shortname='swift-proxy',
