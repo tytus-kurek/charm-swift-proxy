@@ -36,6 +36,7 @@ from charmhelpers.core.hookenv import (
     relation_ids,
     relation_get,
     relations_of_type,
+    local_unit,
     log, ERROR,
     Hooks, UnregisteredHookError,
     open_port
@@ -361,12 +362,15 @@ def update_nrpe_config():
     for rel in relations_of_type('nrpe-external-master'):
         if 'nagios_hostname' in rel:
             hostname = rel['nagios_hostname']
+            host_context = rel['nagios_host_context']
             break
     nrpe = NRPE(hostname=hostname)
-    
+
+    current_unit = "%s:%s" % (host_context, local_unit())
+
     nrpe.add_check(
         shortname='swift-proxy',
-        description='swift-proxy process',
+        description='process check {%s}' % current_unit,
         check_cmd = 'check_upstart_job swift-proxy',
         )
 
