@@ -131,10 +131,3 @@ Swift may be used to as a storage backend for the Glance image service.  To do
 so, simply add a relation between swift-proxy and an existing Glance service
 deployed using the cs:precise/glance charm.
 
-**HACLUSTER**
-
-When running multiple units of the swift-proxy service, especially if a
-relation is added with hacluster, it is very important to ensure that all
-proxy units have finished installing and the cluster has reached quorum prior to
-joining swift-storage relations.
-
