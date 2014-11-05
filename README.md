@@ -14,8 +14,8 @@ This charm was developed to support deploying multiple version of Swift on
 Ubuntu Precise 12.04, as they relate to the release series of OpenStack.  That
 is, OpenStack Essex corresponds to Swift 1.4.8 while OpenStack Folsom shipped
 1.7.4.  This charm can be used to deploy either (and future) versions of Swift
-onto an Ubuntu Precise 12.04, making use of the Ubuntu Cloud Archive when
-needed.
+onto an Ubuntu Precise 12.04 or Trusty 14.04 making use of the Ubuntu Cloud
+Archive when needed.
 
 Usage
 -----
@@ -130,3 +130,4 @@ required for any integration with other OpenStack components.
 Swift may be used to as a storage backend for the Glance image service.  To do
 so, simply add a relation between swift-proxy and an existing Glance service
 deployed using the cs:precise/glance charm.
+

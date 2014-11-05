@@ -35,12 +35,17 @@ from charmhelpers.core.hookenv import (
     relation_set,
     relation_ids,
     relation_get,
-    log, ERROR,
+    log,
+    INFO,
+    WARNING,
+    ERROR,
     Hooks, UnregisteredHookError,
     open_port
 )
 from charmhelpers.core.host import (
     service_restart,
+    service_stop,
+    service_start,
     restart_on_change
 )
 from charmhelpers.fetch import (
@@ -88,12 +93,15 @@ def install():
     apt_install(pkgs, fatal=True)
     apt_install(extra_pkgs, fatal=True)
     ensure_swift_dir()
-    # initialize new storage rings.
-    for ring in SWIFT_RINGS.iteritems():
-        initialize_ring(ring[1],
-                        config('partition-power'),
-                        config('replicas'),
-                        config('min-hours'))
+
+    if cluster.is_elected_leader(SWIFT_HA_RES):
+        log("Leader established, generating ring builders")
+        # initialize new storage rings.
+        for ring in SWIFT_RINGS.iteritems():
+            initialize_ring(ring[1],
+                            config('partition-power'),
+                            config('replicas'),
+                            config('min-hours'))
 
     # configure a directory on webserver for distributing rings.
     www_dir = get_www_dir()
@@ -128,42 +136,71 @@ def keystone_changed():
     configure_https()
 
 
+def get_hostaddr():
+    if config('prefer-ipv6'):
+        return get_ipv6_addr(exc_list=[config('vip')])[0]
+
+    return unit_get('private-address')
+
+
+def builders_synced():
+    for ring in SWIFT_RINGS.itervalues():
+        if not os.path.exists(ring):
+            log("Builder not yet synced - %s" % (ring))
+            return False
+
+    return True
+
+
 def balance_rings():
     '''handle doing ring balancing and distribution.'''
+    if not cluster.eligible_leader(SWIFT_HA_RES):
+        log("Balance rings called by non-leader - skipping", level=WARNING)
+        return
+
     new_ring = False
     for ring in SWIFT_RINGS.itervalues():
         if balance_ring(ring):
             log('Balanced ring %s' % ring)
             new_ring = True
+
     if not new_ring:
+        log("Rings unchanged by rebalance - skipping sync", level=INFO)
         return
 
     www_dir = get_www_dir()
-    for ring in SWIFT_RINGS.keys():
-        f = '%s.ring.gz' % ring
-        shutil.copyfile(os.path.join(SWIFT_CONF_DIR, f),
-                        os.path.join(www_dir, f))
+    for ring, builder_path in SWIFT_RINGS.iteritems():
+        ringfile = '%s.ring.gz' % ring
+        shutil.copyfile(os.path.join(SWIFT_CONF_DIR, ringfile),
+                        os.path.join(www_dir, ringfile))
+        shutil.copyfile(builder_path,
+                        os.path.join(www_dir, os.path.basename(builder_path)))
 
-    if cluster.eligible_leader(SWIFT_HA_RES):
-        msg = 'Broadcasting notification to all storage nodes that new '\
-              'ring is ready for consumption.'
-        log(msg)
-        path = os.path.basename(www_dir)
-        trigger = uuid.uuid4()
+    if cluster.is_clustered():
+        hostname = config('vip')
+    else:
+        hostname = get_hostaddr()
 
-        if cluster.is_clustered():
-            hostname = config('vip')
-        elif config('prefer-ipv6'):
-            hostname = get_ipv6_addr(exc_list=[config('vip')])[0]
-        else:
-            hostname = unit_get('private-address')
+    hostname = format_ipv6_addr(hostname) or hostname
 
-        hostname = format_ipv6_addr(hostname) or hostname
-        rings_url = 'http://%s/%s' % (hostname, path)
-        # notify storage nodes that there is a new ring to fetch.
-        for relid in relation_ids('swift-storage'):
-            relation_set(relation_id=relid, swift_hash=get_swift_hash(),
-                         rings_url=rings_url, trigger=trigger)
+    # Notify peers that builders are available
+    for rid in relation_ids('cluster'):
+        log("Notifying peer(s) that rings are ready for sync (rid='%s')" %
+            (rid))
+        relation_set(relation_id=rid,
+                     relation_settings={'builder-broker': hostname})
+
+    log('Broadcasting notification to all storage nodes that new ring is '
+        'ready for consumption.')
+
+    path = os.path.basename(www_dir)
+    trigger = uuid.uuid4()
+
+    rings_url = 'http://%s/%s' % (hostname, path)
+    # notify storage nodes that there is a new ring to fetch.
+    for relid in relation_ids('swift-storage'):
+        relation_set(relation_id=relid, swift_hash=get_swift_hash(),
+                     rings_url=rings_url, trigger=trigger)
 
     service_restart('swift-proxy')
 
@@ -176,33 +213,52 @@ def storage_changed():
     else:
         host_ip = openstack.get_host_ip(relation_get('private-address'))
 
-    zone = get_zone(config('zone-assignment'))
-    node_settings = {
-        'ip': host_ip,
-        'zone': zone,
-        'account_port': relation_get('account_port'),
-        'object_port': relation_get('object_port'),
-        'container_port': relation_get('container_port'),
-    }
-    if None in node_settings.itervalues():
-        log('storage_changed: Relation not ready.')
-        return None
+    if cluster.is_elected_leader(SWIFT_HA_RES):
+        log("Leader established, updating ring builders")
 
-    for k in ['zone', 'account_port', 'object_port', 'container_port']:
-        node_settings[k] = int(node_settings[k])
+        zone = get_zone(config('zone-assignment'))
+        node_settings = {
+            'ip': host_ip,
+            'zone': zone,
+            'account_port': relation_get('account_port'),
+            'object_port': relation_get('object_port'),
+            'container_port': relation_get('container_port'),
+        }
 
-    CONFIGS.write_all()
+        if None in node_settings.itervalues():
+            log('storage_changed: Relation not ready.')
+            return None
 
-    # allow for multiple devs per unit, passed along as a : separated list
-    devs = relation_get('device').split(':')
-    for dev in devs:
-        node_settings['device'] = dev
-        for ring in SWIFT_RINGS.itervalues():
-            if not exists_in_ring(ring, node_settings):
-                add_to_ring(ring, node_settings)
+        for k in ['zone', 'account_port', 'object_port', 'container_port']:
+            node_settings[k] = int(node_settings[k])
 
-    if should_balance([r for r in SWIFT_RINGS.itervalues()]):
-        balance_rings()
+        CONFIGS.write_all()
+
+        # allow for multiple devs per unit, passed along as a : separated list
+        devs = relation_get('device').split(':')
+        for dev in devs:
+            node_settings['device'] = dev
+            for ring in SWIFT_RINGS.itervalues():
+                if not exists_in_ring(ring, node_settings):
+                    add_to_ring(ring, node_settings)
+
+        if should_balance([r for r in SWIFT_RINGS.itervalues()]):
+            balance_rings()
+
+            # Notify peers that builders are available
+            for rid in relation_ids('cluster'):
+                log("Notifying peer(s) that ring builder is ready (rid='%s')" %
+                    (rid))
+                relation_set(relation_id=rid,
+                             relation_settings={'builder-broker':
+                                                get_hostaddr()})
+        else:
+            log("Not yet ready to balance rings - insufficient replicas?",
+                level=INFO)
+    else:
+        log("New storage relation joined - stopping proxy until ring builder "
+            "synced")
+        service_stop('swift-proxy')
 
 
 @hooks.hook('swift-storage-relation-broken')
@@ -231,18 +287,42 @@ def config_changed():
 @hooks.hook('cluster-relation-joined')
 def cluster_joined(relation_id=None):
     for addr_type in ADDRESS_TYPES:
-        address = get_address_in_network(
-            config('os-{}-network'.format(addr_type))
-        )
+        netaddr_cfg = 'os-{}-network'.format(addr_type)
+        address = get_address_in_network(config(netaddr_cfg))
         if address:
-            relation_set(
-                relation_id=relation_id,
-                relation_settings={'{}-address'.format(addr_type): address}
-            )
+            settings = {'{}-address'.format(addr_type): address}
+            relation_set(relation_id=relation_id, relation_settings=settings)
+
     if config('prefer-ipv6'):
         private_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
         relation_set(relation_id=relation_id,
                      relation_settings={'private-address': private_addr})
+    else:
+        private_addr = unit_get('private-address')
+
+
+def sync_proxy_rings(broker_url):
+    """The leader proxy is responsible for intialising, updating and
+    rebalancing the ring. Once the leader is ready the rings must then be
+    synced into each other proxy unit.
+
+    Note that we sync the ring builder and .gz files since the builder itself
+    is linked to the underlying .gz ring.
+    """
+    log('Fetching swift rings & builders from proxy @ %s.' % broker_url)
+    target = '/etc/swift'
+    for server in ['account', 'object', 'container']:
+        url = '%s/%s.builder' % (broker_url, server)
+        log('Fetching %s.' % url)
+        cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
+               "%s/%s.builder" % (target, server)]
+        subprocess.check_call(cmd)
+
+        url = '%s/%s.ring.gz' % (broker_url, server)
+        log('Fetching %s.' % url)
+        cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
+               '%s/%s.ring.gz' % (target, server)]
+        subprocess.check_call(cmd)
 
 
 @hooks.hook('cluster-relation-changed',
@@ -250,6 +330,31 @@ def cluster_joined(relation_id=None):
 @restart_on_change(restart_map())
 def cluster_changed():
     CONFIGS.write_all()
+
+    # If not the leader, see if there are any builder files we can sync from
+    # the leader.
+    if not cluster.is_elected_leader(SWIFT_HA_RES):
+        settings = relation_get()
+        broker = settings.get('builder-broker', None)
+        if broker:
+            path = os.path.basename(get_www_dir())
+            broker_url = 'http://%s/%s' % (broker, path)
+            try:
+                sync_proxy_rings(broker_url)
+            except subprocess.CalledProcessError:
+                log("Ring builder sync failed, builders not yet available - "
+                    "leader not ready?", level=WARNING)
+                return None
+
+            if builders_synced():
+                log("Ring builders synced - balancing rings and starting "
+                    "proxy")
+
+                CONFIGS.write_all()
+                service_start('swift-proxy')
+            else:
+                log("Not all builders synced yet - waiting for peer sync "
+                    "before starting proxy", level=INFO)
 
 
 @hooks.hook('ha-relation-changed')
