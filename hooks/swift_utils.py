@@ -86,7 +86,7 @@ CONFIG_FILES = OrderedDict([
         'services': ['swift-proxy'],
     }),
     (HAPROXY_CONF, {
-        'hook_contexts': [context.HAProxyContext(),
+        'hook_contexts': [context.HAProxyContext(singlenode_mode=True),
                           swift_context.HAProxyContext()],
         'services': ['haproxy'],
     }),
