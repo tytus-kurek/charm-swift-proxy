@@ -597,7 +597,7 @@ def update_min_part_hours():
     performed and if setting has changed, rings will be resynced across the
     cluster.
     """
-    if is_elected_leader(SWIFT_HA_RES):
+    if not is_elected_leader(SWIFT_HA_RES):
         # Only the leader can do this.
         return
 
@@ -609,7 +609,7 @@ def update_min_part_hours():
             min_part_hours = get_min_part_hours(path)
             if min_part_hours != new_min_part_hours:
                 log("Setting ring %s min_part_hours to %s" %
-                    (new_min_part_hours), level=INFO)
+                    (ring, new_min_part_hours), level=INFO)
                 set_min_part_hours(path, new_min_part_hours)
                 resync_builders = True
 

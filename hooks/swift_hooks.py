@@ -103,7 +103,7 @@ def install():
     if is_elected_leader(SWIFT_HA_RES):
         log("Leader established, generating ring builders", level=INFO)
         # initialize new storage rings.
-        for ring, path in SWIFT_RINGS.iteritems():
+        for path in SWIFT_RINGS.itervalues():
             initialize_ring(path,
                             config('partition-power'),
                             config('replicas'),
@@ -205,8 +205,7 @@ def storage_changed():
     }
 
     if None in node_settings.itervalues():
-        missing = [k for k, v in node_settings.iteritems()
-                   if node_settings[k] is None]
+        missing = [k for k, v in node_settings.iteritems() if v is None]
         log("Relation not ready - some required values not provided by "
             "relation (missing=%s)" % (', '.join(missing)), level=INFO)
         return None
@@ -271,7 +270,8 @@ def cluster_changed():
         for rid in rel_ids:
             for unit in related_units(rid):
                 units += 1
-                disabled.append(relation_get('disable-proxy-service', rid=rid))
+                disabled.append(relation_get('disable-proxy-service', rid=rid,
+                                             unit=unit))
 
         disabled = [int(d) for d in disabled if d is not None]
         if not any(disabled) and len(set(disabled)) == 1:
