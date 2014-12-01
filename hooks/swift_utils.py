@@ -1,14 +1,41 @@
 import os
 import pwd
+import shutil
 import subprocess
-import charmhelpers.contrib.openstack.utils as openstack
-import sys
-from collections import OrderedDict
+import uuid
 
+from collections import OrderedDict
+from swift_context import (
+    get_swift_hash,
+    SwiftHashContext,
+    SwiftIdentityContext,
+    HAProxyContext,
+    SwiftRingContext,
+    ApacheSSLContext,
+    MemcachedContext,
+)
+
+import charmhelpers.contrib.openstack.context as context
+import charmhelpers.contrib.openstack.templating as templating
+from charmhelpers.contrib.openstack.utils import (
+    get_os_codename_package,
+    get_os_codename_install_source,
+    configure_installation_source
+)
+from charmhelpers.contrib.hahelpers.cluster import (
+    is_elected_leader,
+    is_clustered,
+)
 from charmhelpers.core.hookenv import (
-    log, ERROR,
+    log,
+    DEBUG,
+    INFO,
+    WARNING,
     config,
     relation_get,
+    unit_get,
+    relation_set,
+    relation_ids,
 )
 from charmhelpers.fetch import (
     apt_update,
@@ -16,14 +43,13 @@ from charmhelpers.fetch import (
     apt_install,
     add_source
 )
-
 from charmhelpers.core.host import (
     lsb_release
 )
-
-import charmhelpers.contrib.openstack.context as context
-import charmhelpers.contrib.openstack.templating as templating
-import swift_context
+from charmhelpers.contrib.network.ip import (
+    format_ipv6_addr,
+    get_ipv6_addr,
+)
 
 
 # Various config files that are managed via templating.
@@ -70,59 +96,58 @@ BASE_PACKAGES = [
 FOLSOM_PACKAGES = BASE_PACKAGES + ['swift-plugin-s3']
 
 SWIFT_HA_RES = 'grp_swift_vips'
-
 TEMPLATES = 'templates/'
 
 # Map config files to hook contexts and services that will be associated
 # with file in restart_on_changes()'s service map.
 CONFIG_FILES = OrderedDict([
     (SWIFT_CONF, {
-        'hook_contexts': [swift_context.SwiftHashContext()],
+        'hook_contexts': [SwiftHashContext()],
         'services': ['swift-proxy'],
     }),
     (SWIFT_PROXY_CONF, {
-        'hook_contexts': [swift_context.SwiftIdentityContext(),
+        'hook_contexts': [SwiftIdentityContext(),
                           context.BindHostContext()],
         'services': ['swift-proxy'],
     }),
     (HAPROXY_CONF, {
         'hook_contexts': [context.HAProxyContext(),
-                          swift_context.HAProxyContext()],
+                          HAProxyContext()],
         'services': ['haproxy'],
     }),
     (SWIFT_RINGS_CONF, {
-        'hook_contexts': [swift_context.SwiftRingContext()],
+        'hook_contexts': [SwiftRingContext()],
         'services': ['apache2'],
     }),
     (SWIFT_RINGS_24_CONF, {
-        'hook_contexts': [swift_context.SwiftRingContext()],
+        'hook_contexts': [SwiftRingContext()],
         'services': ['apache2'],
     }),
     (APACHE_SITE_CONF, {
-        'hook_contexts': [swift_context.ApacheSSLContext()],
+        'hook_contexts': [ApacheSSLContext()],
         'services': ['apache2'],
     }),
     (APACHE_SITE_24_CONF, {
-        'hook_contexts': [swift_context.ApacheSSLContext()],
+        'hook_contexts': [ApacheSSLContext()],
         'services': ['apache2'],
     }),
     (MEMCACHED_CONF, {
-        'hook_contexts': [swift_context.MemcachedContext()],
+        'hook_contexts': [MemcachedContext()],
         'services': ['memcached'],
     }),
 ])
 
 
 def register_configs():
-    """
-    Register config files with their respective contexts.
-    Regstration of some configs may not be required depending on
+    """Register config files with their respective contexts.
+
+    Registration of some configs may not be required depending on
     existing of certain relations.
     """
     # if called without anything installed (eg during install hook)
     # just default to earliest supported release. configs dont get touched
     # till post-install, anyway.
-    release = openstack.get_os_codename_package('swift-proxy', fatal=False) \
+    release = get_os_codename_package('swift-proxy', fatal=False) \
         or 'essex'
     configs = templating.OSConfigRenderer(templates_dir=TEMPLATES,
                                           openstack_release=release)
@@ -149,13 +174,12 @@ def register_configs():
 
 
 def restart_map():
-    '''
-    Determine the correct resource map to be passed to
+    """Determine the correct resource map to be passed to
     charmhelpers.core.restart_on_change() based on the services configured.
 
-    :returns: dict: A dictionary mapping config file to lists of services
+    :returns dict: A dictionary mapping config file to lists of services
                     that should be restarted when file changes.
-    '''
+    """
     _map = []
     for f, ctxt in CONFIG_FILES.iteritems():
         svcs = []
@@ -163,6 +187,7 @@ def restart_map():
             svcs.append(svc)
         if svcs:
             _map.append((f, svcs))
+
     return OrderedDict(_map)
 
 
@@ -174,12 +199,13 @@ def swift_user(username='swift'):
 def ensure_swift_dir(conf_dir=os.path.dirname(SWIFT_CONF)):
     if not os.path.isdir(conf_dir):
         os.mkdir(conf_dir, 0o750)
+
     uid, gid = swift_user()
     os.chown(conf_dir, uid, gid)
 
 
 def determine_packages(release):
-    '''determine what packages are needed for a given OpenStack release'''
+    """Determine what packages are needed for a given OpenStack release."""
     if release == 'essex':
         return BASE_PACKAGES
     elif release == 'folsom':
@@ -188,13 +214,6 @@ def determine_packages(release):
         return FOLSOM_PACKAGES
     else:
         return FOLSOM_PACKAGES
-
-
-def write_rc_script():
-    env_vars = {'OPENSTACK_SERVICE_SWIFT': 'proxy-server',
-                'OPENSTACK_PORT_API': config('bind-port'),
-                'OPENSTACK_PORT_MEMCACHED': 11211}
-    openstack.save_script_rc(**env_vars)
 
 
 def _load_builder(path):
@@ -213,6 +232,7 @@ def _load_builder(path):
     for dev in builder.devs:
         if dev and 'meta' not in dev:
             dev['meta'] = ''
+
     return builder
 
 
@@ -222,14 +242,14 @@ def _write_ring(ring, ring_path):
 
 
 def ring_port(ring_path, node):
-    '''determine correct port from relation settings for a given ring file.'''
+    """Determine correct port from relation settings for a given ring file."""
     for name in ['account', 'object', 'container']:
         if name in ring_path:
             return node[('%s_port' % name)]
 
 
 def initialize_ring(path, part_power, replicas, min_hours):
-    '''Initialize a new swift ring with given parameters.'''
+    """Initialize a new swift ring with given parameters."""
     from swift.common.ring import RingBuilder
     ring = RingBuilder(part_power, replicas, min_hours)
     _write_ring(ring, path)
@@ -244,8 +264,7 @@ def exists_in_ring(ring_path, node):
         n = [(i, node[i]) for i in node if i in dev and i != 'zone']
         if sorted(d) == sorted(n):
 
-            msg = 'Node already exists in ring (%s).' % ring_path
-            log(msg)
+            log('Node already exists in ring (%s).' % ring_path, level=INFO)
             return True
 
     return False
@@ -271,10 +290,8 @@ def add_to_ring(ring_path, node):
     }
     ring.add_dev(new_dev)
     _write_ring(ring, ring_path)
-    msg = 'Added new device to ring %s: %s' %\
-        (ring_path,
-         [k for k in new_dev.iteritems()])
-    log(msg)
+    msg = 'Added new device to ring %s: %s' % (ring_path, new_dev)
+    log(msg, level=INFO)
 
 
 def _get_zone(ring_builder):
@@ -302,19 +319,29 @@ def _get_zone(ring_builder):
     return sorted(zone_distrib, key=zone_distrib.get).pop(0)
 
 
+def get_min_part_hours(ring):
+    builder = _load_builder(ring)
+    return builder.min_part_hours
+
+
+def set_min_part_hours(path, min_part_hours):
+    builder = _load_builder(path)
+    builder.min_part_hours = min_part_hours
+    _write_ring(builder, path)
+
+
 def get_zone(assignment_policy):
-    ''' Determine the appropriate zone depending on configured assignment
-        policy.
+    """Determine the appropriate zone depending on configured assignment policy.
 
-        Manual assignment relies on each storage zone being deployed as a
-        separate service unit with its desired zone set as a configuration
-        option.
+    Manual assignment relies on each storage zone being deployed as a
+    separate service unit with its desired zone set as a configuration
+    option.
 
-        Auto assignment distributes swift-storage machine units across a number
-        of zones equal to the configured minimum replicas.  This allows for a
-        single swift-storage service unit, with each 'add-unit'd machine unit
-        being assigned to a different zone.
-    '''
+    Auto assignment distributes swift-storage machine units across a number
+    of zones equal to the configured minimum replicas.  This allows for a
+    single swift-storage service unit, with each 'add-unit'd machine unit
+    being assigned to a different zone.
+    """
     if assignment_policy == 'manual':
         return relation_get('zone')
     elif assignment_policy == 'auto':
@@ -324,13 +351,12 @@ def get_zone(assignment_policy):
             potential_zones.append(_get_zone(builder))
         return set(potential_zones).pop()
     else:
-        log('Invalid zone assignment policy: %s' % assignment_policy,
-            level=ERROR)
-        sys.exit(1)
+        msg = ('Invalid zone assignment policy: %s' % assignment_policy)
+        raise Exception(msg)
 
 
 def balance_ring(ring_path):
-    '''balance a ring.  return True if it needs redistribution'''
+    """Balance a ring.  return True if it needs redistribution."""
     # shell out to swift-ring-builder instead, since the balancing code there
     # does a bunch of un-importable validation.'''
     cmd = ['swift-ring-builder', ring_path, 'rebalance']
@@ -340,21 +366,32 @@ def balance_ring(ring_path):
     if rc == 0:
         return True
     elif rc == 1:
-        # swift-ring-builder returns 1 on WARNING (ring didn't require balance)
+        # Ring builder exit-code=1 is supposed to indicate warning but I have
+        # noticed that it can also return 1 with the following sort of message:
+        #
+        #   NOTE: Balance of 166.67 indicates you should push this ring, wait
+        #         at least 0 hours, and rebalance/repush.
+        #
+        # This indicates that a balance has occurred and a resync would be
+        # required so not sure why 1 is returned in this case.
         return False
     else:
-        log('balance_ring: %s returned %s' % (cmd, rc), level=ERROR)
-        sys.exit(1)
+        msg = ('balance_ring: %s returned %s' % (cmd, rc))
+        raise Exception(msg)
 
 
 def should_balance(rings):
-    '''Based on zones vs min. replicas, determine whether or not the rings
-       should be balanced during initial configuration.'''
+    """Based on zones vs min. replicas, determine whether or not the rings
+    should be balanced during initial configuration.
+    """
     for ring in rings:
         builder = _load_builder(ring).to_dict()
         replicas = builder['replicas']
         zones = [dev['zone'] for dev in builder['devs']]
-        if len(set(zones)) < replicas:
+        num_zones = len(set(zones))
+        if num_zones < replicas:
+            log("Not enough zones (%d) defined to allow rebalance "
+                "(need >= %d)" % (num_zones, replicas), level=DEBUG)
             return False
 
     return True
@@ -362,10 +399,10 @@ def should_balance(rings):
 
 def do_openstack_upgrade(configs):
     new_src = config('openstack-origin')
-    new_os_rel = openstack.get_os_codename_install_source(new_src)
+    new_os_rel = get_os_codename_install_source(new_src)
 
-    log('Performing OpenStack upgrade to %s.' % (new_os_rel))
-    openstack.configure_installation_source(new_src)
+    log('Performing OpenStack upgrade to %s.' % (new_os_rel), level=DEBUG)
+    configure_installation_source(new_src)
     dpkg_opts = [
         '--option', 'Dpkg::Options::=--force-confnew',
         '--option', 'Dpkg::Options::=--force-confdef',
@@ -390,3 +427,194 @@ def setup_ipv6():
                    ' main')
         apt_update()
         apt_install('haproxy/trusty-backports', fatal=True)
+
+
+def sync_proxy_rings(broker_url):
+    """The leader proxy is responsible for intialising, updating and
+    rebalancing the ring. Once the leader is ready the rings must then be
+    synced into each other proxy unit.
+
+    Note that we sync the ring builder and .gz files since the builder itself
+    is linked to the underlying .gz ring.
+    """
+    log('Fetching swift rings & builders from proxy @ %s.' % broker_url,
+        level=DEBUG)
+    target = '/etc/swift'
+    for server in ['account', 'object', 'container']:
+        url = '%s/%s.builder' % (broker_url, server)
+        log('Fetching %s.' % url, level=DEBUG)
+        cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
+               "%s/%s.builder" % (target, server)]
+        subprocess.check_call(cmd)
+
+        url = '%s/%s.ring.gz' % (broker_url, server)
+        log('Fetching %s.' % url, level=DEBUG)
+        cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
+               '%s/%s.ring.gz' % (target, server)]
+        subprocess.check_call(cmd)
+
+
+def balance_rings(force_sync=False):
+    """Rebalance each ring and notify peers that new rings are available."""
+    if not is_elected_leader(SWIFT_HA_RES):
+        log("Balance rings called by non-leader - skipping", level=WARNING)
+        return
+
+    rebalanced = False
+    for path in SWIFT_RINGS.itervalues():
+        if balance_ring(path):
+            log('Balanced ring %s' % path, level=DEBUG)
+            rebalanced = True
+        else:
+            log('Ring %s not rebalanced' % path, level=DEBUG)
+
+    if not rebalanced and not force_sync:
+        log("Rings unchanged by rebalance - skipping sync", level=INFO)
+        return
+
+    www_dir = get_www_dir()
+    for ring, builder_path in SWIFT_RINGS.iteritems():
+        ringfile = '%s.ring.gz' % ring
+        shutil.copyfile(os.path.join(SWIFT_CONF_DIR, ringfile),
+                        os.path.join(www_dir, ringfile))
+        shutil.copyfile(builder_path,
+                        os.path.join(www_dir, os.path.basename(builder_path)))
+
+    notify_peers_builders_available()
+
+
+def mark_www_rings_deleted():
+    """Mark any rings from the apache server directory as deleted so that
+    storage units won't see them.
+    """
+    www_dir = get_www_dir()
+    for ring, _ in SWIFT_RINGS.iteritems():
+        path = os.path.join(www_dir, '%s.ring.gz' % ring)
+        if os.path.exists(path):
+            os.rename(path, "%s.deleted" % (path))
+
+
+def notify_peers_builders_available():
+    """Notify peer swift-proxy peer units that they should synchronise ring and
+    builder files.
+
+    Note that this should only be called from the leader unit.
+    """
+    if not is_elected_leader(SWIFT_HA_RES):
+        log("Ring availability peer broadcast requested by non-leader - "
+            "skipping", level=WARNING)
+        return
+
+    if is_clustered():
+        hostname = config('vip')
+    else:
+        hostname = get_hostaddr()
+
+    hostname = format_ipv6_addr(hostname) or hostname
+    # Notify peers that builders are available
+    log("Notifying peer(s) that rings are ready for sync.", level=INFO)
+    trigger = str(uuid.uuid4())
+    for rid in relation_ids('cluster'):
+        log("Notifying rid=%s" % (rid), level=DEBUG)
+        # NOTE(dosaboy): we add some random data to the relation settings
+        # otherwise subsequent calls will not fire (since hostname is always
+        # the same).
+        relation_set(relation_id=rid,
+                     relation_settings={'trigger': trigger,
+                                        'builder-broker': hostname,
+                                        'disable-proxy-service': 0})
+
+
+def disable_peer_apis():
+    """Notify peer relations that they should disable their proxy services.
+
+    This should only be called by the leader unit. Once update has been
+    """
+    if not is_elected_leader(SWIFT_HA_RES):
+        # Only the leader can do this.
+        return
+
+    log("Sending request to disable proxy service to all peers", level=INFO)
+    rel_ids = relation_ids('cluster')
+    trigger = str(uuid.uuid4())
+    for rid in rel_ids:
+        relation_set(relation_id=rid,
+                     relation_settings={'trigger': trigger,
+                                        'disable-proxy-service': 1})
+
+
+def notify_storage_rings_available():
+    """Notify peer swift-storage relations that they should synchronise ring and
+    builder files.
+
+    Note that this should only be called from the leader unit.
+    """
+    if not is_elected_leader(SWIFT_HA_RES):
+        log("Ring availability storage-relation broadcast requested by "
+            "non-leader - skipping", level=WARNING)
+        return
+
+    if is_clustered():
+        hostname = config('vip')
+    else:
+        hostname = get_hostaddr()
+
+    hostname = format_ipv6_addr(hostname) or hostname
+    path = os.path.basename(get_www_dir())
+    rings_url = 'http://%s/%s' % (hostname, path)
+    trigger = uuid.uuid4()
+    # Notify storage nodes that there is a new ring to fetch.
+    log("Notifying storage nodes that new ring is ready for sync.", level=INFO)
+    for relid in relation_ids('swift-storage'):
+        relation_set(relation_id=relid, swift_hash=get_swift_hash(),
+                     rings_url=rings_url, trigger=trigger)
+
+
+def builders_synced():
+    """Check that we have all the ring builders synced from the leader.
+
+    Returns True if we have all ring builders.
+    """
+    for ring in SWIFT_RINGS.itervalues():
+        if not os.path.exists(ring):
+            log("Builder not yet synced - %s" % (ring), level=DEBUG)
+            return False
+
+    return True
+
+
+def get_hostaddr():
+    if config('prefer-ipv6'):
+        return get_ipv6_addr(exc_list=[config('vip')])[0]
+
+    return unit_get('private-address')
+
+
+def update_min_part_hours():
+    """Update the min_part_hours setting on swift rings.
+
+    This should only be called by the leader unit. Once update has been
+    performed and if setting has changed, rings will be resynced across the
+    cluster.
+    """
+    if is_elected_leader(SWIFT_HA_RES):
+        # Only the leader can do this.
+        return
+
+    new_min_part_hours = config('min-hours')
+    resync_builders = False
+    # Only update if all exist
+    if all([os.path.exists(p) for r, p in SWIFT_RINGS.iteritems()]):
+        for ring, path in SWIFT_RINGS.iteritems():
+            min_part_hours = get_min_part_hours(path)
+            if min_part_hours != new_min_part_hours:
+                log("Setting ring %s min_part_hours to %s" %
+                    (new_min_part_hours), level=INFO)
+                set_min_part_hours(path, new_min_part_hours)
+                resync_builders = True
+
+    if resync_builders:
+        if should_balance([r for r in SWIFT_RINGS.itervalues()]):
+            balance_rings()
+            notify_peers_builders_available()
+            notify_storage_rings_available()

@@ -2,71 +2,79 @@
 
 import os
 import sys
-import shutil
-import uuid
 import subprocess
+import uuid
 
-import charmhelpers.contrib.openstack.utils as openstack
-import charmhelpers.contrib.hahelpers.cluster as cluster
 from swift_utils import (
     register_configs,
     restart_map,
     determine_packages,
     ensure_swift_dir,
-    SWIFT_RINGS, get_www_dir,
+    SWIFT_RINGS,
+    get_www_dir,
     initialize_ring,
     swift_user,
     SWIFT_HA_RES,
-    balance_ring,
-    SWIFT_CONF_DIR,
     get_zone,
     exists_in_ring,
     add_to_ring,
     should_balance,
     do_openstack_upgrade,
-    write_rc_script,
-    setup_ipv6
+    setup_ipv6,
+    balance_rings,
+    builders_synced,
+    sync_proxy_rings,
+    update_min_part_hours,
+    notify_storage_rings_available,
+    notify_peers_builders_available,
+    mark_www_rings_deleted,
+    disable_peer_apis,
 )
-from swift_context import get_swift_hash
 
+import charmhelpers.contrib.openstack.utils as openstack
+from charmhelpers.contrib.hahelpers.cluster import (
+    is_elected_leader,
+    is_crm_leader
+)
 from charmhelpers.core.hookenv import (
     config,
     unit_get,
     relation_set,
     relation_ids,
     relation_get,
+    related_units,
     log,
+    DEBUG,
     INFO,
     WARNING,
     ERROR,
     Hooks, UnregisteredHookError,
-    open_port
+    open_port,
 )
 from charmhelpers.core.host import (
     service_restart,
     service_stop,
     service_start,
-    restart_on_change
+    restart_on_change,
 )
 from charmhelpers.fetch import (
     apt_install,
-    apt_update
+    apt_update,
 )
 from charmhelpers.payload.execd import execd_preinstall
-
 from charmhelpers.contrib.openstack.ip import (
     canonical_url,
-    PUBLIC, INTERNAL, ADMIN
+    PUBLIC,
+    INTERNAL,
+    ADMIN,
 )
 from charmhelpers.contrib.network.ip import (
     get_iface_for_address,
     get_netmask_for_address,
     get_address_in_network,
     get_ipv6_addr,
-    format_ipv6_addr,
-    is_ipv6
+    is_ipv6,
 )
-
 from charmhelpers.contrib.openstack.context import ADDRESS_TYPES
 
 extra_pkgs = [
@@ -74,9 +82,7 @@ extra_pkgs = [
     "python-jinja2"
 ]
 
-
 hooks = Hooks()
-
 CONFIGS = register_configs()
 
 
@@ -86,19 +92,19 @@ def install():
     src = config('openstack-origin')
     if src != 'distro':
         openstack.configure_installation_source(src)
+
     apt_update(fatal=True)
     rel = openstack.get_os_codename_install_source(src)
-
     pkgs = determine_packages(rel)
     apt_install(pkgs, fatal=True)
     apt_install(extra_pkgs, fatal=True)
     ensure_swift_dir()
 
-    if cluster.is_elected_leader(SWIFT_HA_RES):
-        log("Leader established, generating ring builders")
+    if is_elected_leader(SWIFT_HA_RES):
+        log("Leader established, generating ring builders", level=INFO)
         # initialize new storage rings.
-        for ring in SWIFT_RINGS.iteritems():
-            initialize_ring(ring[1],
+        for ring, path in SWIFT_RINGS.iteritems():
+            initialize_ring(path,
                             config('partition-power'),
                             config('replicas'),
                             config('min-hours'))
@@ -107,14 +113,39 @@ def install():
     www_dir = get_www_dir()
     if not os.path.isdir(www_dir):
         os.mkdir(www_dir, 0o755)
+
     uid, gid = swift_user()
     os.chown(www_dir, uid, gid)
 
 
+@hooks.hook('config-changed')
+@restart_on_change(restart_map())
+def config_changed():
+    if config('prefer-ipv6'):
+        setup_ipv6()
+
+    configure_https()
+    open_port(config('bind-port'))
+
+    # Determine whether or not we should do an upgrade.
+    if openstack.openstack_upgrade_available('python-swift'):
+        do_openstack_upgrade(CONFIGS)
+
+    update_min_part_hours()
+
+    if config('force-cluster-ring-sync'):
+        log("Disabling peer proxy apis before syncing rings across cluster.")
+        disable_peer_apis()
+
+    for r_id in relation_ids('identity-service'):
+        keystone_joined(relid=r_id)
+
+
 @hooks.hook('identity-service-relation-joined')
 def keystone_joined(relid=None):
-    if not cluster.eligible_leader(SWIFT_HA_RES):
+    if not is_elected_leader(SWIFT_HA_RES):
         return
+
     port = config('bind-port')
     admin_url = '%s:%s' % (canonical_url(CONFIGS, ADMIN), port)
     internal_url = '%s:%s/v1/AUTH_$(tenant_id)s' % \
@@ -136,152 +167,80 @@ def keystone_changed():
     configure_https()
 
 
-def get_hostaddr():
-    if config('prefer-ipv6'):
-        return get_ipv6_addr(exc_list=[config('vip')])[0]
+@hooks.hook('swift-storage-relation-joined')
+def storage_joined():
+    if not is_elected_leader(SWIFT_HA_RES):
+        log("New storage relation joined - stopping proxy until ring builder "
+            "synced", level=INFO)
+        service_stop('swift-proxy')
 
-    return unit_get('private-address')
-
-
-def builders_synced():
-    for ring in SWIFT_RINGS.itervalues():
-        if not os.path.exists(ring):
-            log("Builder not yet synced - %s" % (ring))
-            return False
-
-    return True
-
-
-def balance_rings():
-    '''handle doing ring balancing and distribution.'''
-    if not cluster.eligible_leader(SWIFT_HA_RES):
-        log("Balance rings called by non-leader - skipping", level=WARNING)
-        return
-
-    new_ring = False
-    for ring in SWIFT_RINGS.itervalues():
-        if balance_ring(ring):
-            log('Balanced ring %s' % ring)
-            new_ring = True
-
-    if not new_ring:
-        log("Rings unchanged by rebalance - skipping sync", level=INFO)
-        return
-
-    www_dir = get_www_dir()
-    for ring, builder_path in SWIFT_RINGS.iteritems():
-        ringfile = '%s.ring.gz' % ring
-        shutil.copyfile(os.path.join(SWIFT_CONF_DIR, ringfile),
-                        os.path.join(www_dir, ringfile))
-        shutil.copyfile(builder_path,
-                        os.path.join(www_dir, os.path.basename(builder_path)))
-
-    if cluster.is_clustered():
-        hostname = config('vip')
-    else:
-        hostname = get_hostaddr()
-
-    hostname = format_ipv6_addr(hostname) or hostname
-
-    # Notify peers that builders are available
-    for rid in relation_ids('cluster'):
-        log("Notifying peer(s) that rings are ready for sync (rid='%s')" %
-            (rid))
-        relation_set(relation_id=rid,
-                     relation_settings={'builder-broker': hostname})
-
-    log('Broadcasting notification to all storage nodes that new ring is '
-        'ready for consumption.')
-
-    path = os.path.basename(www_dir)
-    trigger = uuid.uuid4()
-
-    rings_url = 'http://%s/%s' % (hostname, path)
-    # notify storage nodes that there is a new ring to fetch.
-    for relid in relation_ids('swift-storage'):
-        relation_set(relation_id=relid, swift_hash=get_swift_hash(),
-                     rings_url=rings_url, trigger=trigger)
-
-    service_restart('swift-proxy')
+        # Mark rings in the www directory as stale since this unit is no longer
+        # responsible distributing rings but may become responsible again at
+        # some time in the future so were do this to avoid storage nodes
+        # getting out-of-date rings.
+        mark_www_rings_deleted()
 
 
 @hooks.hook('swift-storage-relation-changed')
 @restart_on_change(restart_map())
 def storage_changed():
+    if not is_elected_leader(SWIFT_HA_RES):
+        log("Not the leader - ignoring storage relation until leader ready.",
+            level=DEBUG)
+        return
+
+    log("Leader established, updating ring builders", level=INFO)
     if config('prefer-ipv6'):
         host_ip = '[%s]' % relation_get('private-address')
     else:
         host_ip = openstack.get_host_ip(relation_get('private-address'))
 
-    if cluster.is_elected_leader(SWIFT_HA_RES):
-        log("Leader established, updating ring builders")
+    zone = get_zone(config('zone-assignment'))
+    node_settings = {
+        'ip': host_ip,
+        'zone': zone,
+        'account_port': relation_get('account_port'),
+        'object_port': relation_get('object_port'),
+        'container_port': relation_get('container_port'),
+    }
 
-        zone = get_zone(config('zone-assignment'))
-        node_settings = {
-            'ip': host_ip,
-            'zone': zone,
-            'account_port': relation_get('account_port'),
-            'object_port': relation_get('object_port'),
-            'container_port': relation_get('container_port'),
-        }
+    if None in node_settings.itervalues():
+        missing = [k for k, v in node_settings.iteritems()
+                   if node_settings[k] is None]
+        log("Relation not ready - some required values not provided by "
+            "relation (missing=%s)" % (', '.join(missing)), level=INFO)
+        return None
 
-        if None in node_settings.itervalues():
-            log('storage_changed: Relation not ready.')
-            return None
+    for k in ['zone', 'account_port', 'object_port', 'container_port']:
+        node_settings[k] = int(node_settings[k])
 
-        for k in ['zone', 'account_port', 'object_port', 'container_port']:
-            node_settings[k] = int(node_settings[k])
+    CONFIGS.write_all()
 
-        CONFIGS.write_all()
+    # Allow for multiple devs per unit, passed along as a : separated list
+    devs = relation_get('device').split(':')
+    for dev in devs:
+        node_settings['device'] = dev
+        for ring in SWIFT_RINGS.itervalues():
+            if not exists_in_ring(ring, node_settings):
+                add_to_ring(ring, node_settings)
 
-        # allow for multiple devs per unit, passed along as a : separated list
-        devs = relation_get('device').split(':')
-        for dev in devs:
-            node_settings['device'] = dev
-            for ring in SWIFT_RINGS.itervalues():
-                if not exists_in_ring(ring, node_settings):
-                    add_to_ring(ring, node_settings)
-
-        if should_balance([r for r in SWIFT_RINGS.itervalues()]):
-            balance_rings()
-
-            # Notify peers that builders are available
-            for rid in relation_ids('cluster'):
-                log("Notifying peer(s) that ring builder is ready (rid='%s')" %
-                    (rid))
-                relation_set(relation_id=rid,
-                             relation_settings={'builder-broker':
-                                                get_hostaddr()})
-        else:
-            log("Not yet ready to balance rings - insufficient replicas?",
-                level=INFO)
+    if should_balance([r for r in SWIFT_RINGS.itervalues()]):
+        # NOTE(dosaboy): this may not change anything but we still sync rings
+        #                in case a storage node needs re-syncing.
+        balance_rings(force_sync=True)
+        notify_storage_rings_available()
+        # Restart proxy here in case no config changes made (so
+        # restart_on_change() ineffective).
+        service_restart('swift-proxy')
     else:
-        log("New storage relation joined - stopping proxy until ring builder "
-            "synced")
-        service_stop('swift-proxy')
+        log("Not yet ready to balance rings - insufficient replicas?",
+            level=INFO)
 
 
 @hooks.hook('swift-storage-relation-broken')
 @restart_on_change(restart_map())
 def storage_broken():
     CONFIGS.write_all()
-
-
-@hooks.hook('config-changed')
-@restart_on_change(restart_map())
-def config_changed():
-    if config('prefer-ipv6'):
-        setup_ipv6()
-
-    configure_https()
-    open_port(config('bind-port'))
-    # Determine whether or not we should do an upgrade, based on the
-    # the version offered in keyston-release.
-    if (openstack.openstack_upgrade_available('python-swift')):
-        do_openstack_upgrade(CONFIGS)
-    for r_id in relation_ids('identity-service'):
-        keystone_joined(relid=r_id)
-    [cluster_joined(rid) for rid in relation_ids('cluster')]
 
 
 @hooks.hook('cluster-relation-joined')
@@ -301,68 +260,72 @@ def cluster_joined(relation_id=None):
         private_addr = unit_get('private-address')
 
 
-def sync_proxy_rings(broker_url):
-    """The leader proxy is responsible for intialising, updating and
-    rebalancing the ring. Once the leader is ready the rings must then be
-    synced into each other proxy unit.
-
-    Note that we sync the ring builder and .gz files since the builder itself
-    is linked to the underlying .gz ring.
-    """
-    log('Fetching swift rings & builders from proxy @ %s.' % broker_url)
-    target = '/etc/swift'
-    for server in ['account', 'object', 'container']:
-        url = '%s/%s.builder' % (broker_url, server)
-        log('Fetching %s.' % url)
-        cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
-               "%s/%s.builder" % (target, server)]
-        subprocess.check_call(cmd)
-
-        url = '%s/%s.ring.gz' % (broker_url, server)
-        log('Fetching %s.' % url)
-        cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
-               '%s/%s.ring.gz' % (target, server)]
-        subprocess.check_call(cmd)
-
-
 @hooks.hook('cluster-relation-changed',
             'cluster-relation-departed')
 @restart_on_change(restart_map())
 def cluster_changed():
-    CONFIGS.write_all()
+    if is_elected_leader(SWIFT_HA_RES):
+        rel_ids = relation_ids('cluster')
+        disabled = []
+        units = 0
+        for rid in rel_ids:
+            for unit in related_units(rid):
+                units += 1
+                disabled.append(relation_get('disable-proxy-service', rid=rid))
+
+        disabled = [int(d) for d in disabled if d is not None]
+        if not any(disabled) and len(set(disabled)) == 1:
+            log("Syncing rings and builders across %s peer units" % (units),
+                level=DEBUG)
+            notify_peers_builders_available()
+            notify_storage_rings_available()
+        else:
+            log("Not all apis disabled - skipping sync until all peers ready "
+                "(got %s)" % (disabled), level=INFO)
+
+        CONFIGS.write_all()
+        return
+
+    settings = relation_get()
+    if int(settings.get('disable-proxy-service', 0)):
+        log("Peer request to disable proxy api received", level=INFO)
+        service_stop('swift-proxy')
+        trigger = str(uuid.uuid4())
+        relation_set(relation_settings={'trigger': trigger,
+                                        'disable-proxy-service': 0})
+        return
 
     # If not the leader, see if there are any builder files we can sync from
     # the leader.
-    if not cluster.is_elected_leader(SWIFT_HA_RES):
-        settings = relation_get()
-        broker = settings.get('builder-broker', None)
-        if broker:
-            path = os.path.basename(get_www_dir())
-            broker_url = 'http://%s/%s' % (broker, path)
-            try:
-                sync_proxy_rings(broker_url)
-            except subprocess.CalledProcessError:
-                log("Ring builder sync failed, builders not yet available - "
-                    "leader not ready?", level=WARNING)
-                return None
+    log("Non-leader peer - checking if updated rings available", level=DEBUG)
+    broker = settings.get('builder-broker', None)
+    if not broker:
+        log("No update available", level=DEBUG)
+        return
 
-            if builders_synced():
-                log("Ring builders synced - balancing rings and starting "
-                    "proxy")
+    path = os.path.basename(get_www_dir())
+    try:
+        sync_proxy_rings('http://%s/%s' % (broker, path))
+    except subprocess.CalledProcessError:
+        log("Ring builder sync failed, builders not yet available - "
+            "leader not ready?", level=WARNING)
+        return None
 
-                CONFIGS.write_all()
-                service_start('swift-proxy')
-            else:
-                log("Not all builders synced yet - waiting for peer sync "
-                    "before starting proxy", level=INFO)
+    if builders_synced():
+        log("Ring builders synced - starting proxy", level=INFO)
+        CONFIGS.write_all()
+        service_start('swift-proxy')
+    else:
+        log("Not all builders synced yet - waiting for peer sync "
+            "before starting proxy", level=INFO)
 
 
 @hooks.hook('ha-relation-changed')
 def ha_relation_changed():
     clustered = relation_get('clustered')
-    if clustered and cluster.is_leader(SWIFT_HA_RES):
-        log('Cluster configured, notifying other services and'
-            'updating keystone endpoint configuration')
+    if clustered and is_crm_leader(SWIFT_HA_RES):
+        log("Cluster configured, notifying other services and updating "
+            "keystone endpoint configuration", level=INFO)
         # Tell all related services to start using
         # the VIP instead
         for r_id in relation_ids('identity-service'):
@@ -377,17 +340,12 @@ def ha_relation_joined():
     corosync_mcastport = config('ha-mcastport')
     vip = config('vip')
     if not vip:
-        log('Unable to configure hacluster as vip not provided',
-            level=ERROR)
+        log('Unable to configure hacluster as vip not provided', level=ERROR)
         sys.exit(1)
 
     # Obtain resources
-    resources = {
-        'res_swift_haproxy': 'lsb:haproxy'
-    }
-    resource_params = {
-        'res_swift_haproxy': 'op monitor interval="5s"'
-    }
+    resources = {'res_swift_haproxy': 'lsb:haproxy'}
+    resource_params = {'res_swift_haproxy': 'op monitor interval="5s"'}
 
     vip_group = []
     for vip in vip.split():
@@ -414,12 +372,8 @@ def ha_relation_joined():
     if len(vip_group) >= 1:
         relation_set(groups={'grp_swift_vips': ' '.join(vip_group)})
 
-    init_services = {
-        'res_swift_haproxy': 'haproxy'
-    }
-    clones = {
-        'cl_swift_haproxy': 'res_swift_haproxy'
-    }
+    init_services = {'res_swift_haproxy': 'haproxy'}
+    clones = {'cl_swift_haproxy': 'res_swift_haproxy'}
 
     relation_set(init_services=init_services,
                  corosync_bindiface=corosync_bindiface,
@@ -430,10 +384,9 @@ def ha_relation_joined():
 
 
 def configure_https():
-    '''
-    Enables SSL API Apache config if appropriate and kicks identity-service
+    """Enables SSL API Apache config if appropriate and kicks identity-service
     with any required api updates.
-    '''
+    """
     # need to write all to ensure changes to the entire request pipeline
     # propagate (c-api, haprxy, apache)
     CONFIGS.write_all()
@@ -451,14 +404,17 @@ def configure_https():
     for rid in relation_ids('identity-service'):
         keystone_joined(relid=rid)
 
-    write_rc_script()
+    env_vars = {'OPENSTACK_SERVICE_SWIFT': 'proxy-server',
+                'OPENSTACK_PORT_API': config('bind-port'),
+                'OPENSTACK_PORT_MEMCACHED': 11211}
+    openstack.save_script_rc(**env_vars)
 
 
 def main():
     try:
         hooks.execute(sys.argv)
     except UnregisteredHookError as e:
-        log('Unknown hook {} - skipping.'.format(e))
+        log('Unknown hook {} - skipping.'.format(e), level=DEBUG)
 
 
 if __name__ == '__main__':

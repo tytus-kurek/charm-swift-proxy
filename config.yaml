@@ -30,9 +30,15 @@ options:
     type: int
     description: Minimum replicas.
   min-hours:
-    default: 1
+    default: 0
     type: int
-    description: Minimum hours between balances
+    description: |
+        This is the Swift ring builder min_part_hours parameter. This
+        setting represents the amount of time in hours that Swift will wait
+        between subsequent ring rebalances in order to avoid large IO loads as
+        data is rebalanced when new devices are added to the cluster. Once your
+        cluster has been built, you can set this to a higher value e.g. 1
+        (upstream default). 
   zone-assignment:
     default: "manual"
     type: string
@@ -46,6 +52,14 @@ options:
       zones before the storage ring will be initially balance.  Deployment
       requirements differ based on the zone-assignment policy configured, see
       this charm's README for details.
+  force-cluster-ring-sync:
+      default: False
+      type: boolean
+      description: |
+          There are some cases where one might want to resync rings and
+          builders across storage relations perhaps as a result of a manual
+          ring (e.g. rebalance) update so this toggle can be used to trigger a
+          resync across the entire cluster.
   # User provided SSL cert and key
   ssl_cert:
     type: string
