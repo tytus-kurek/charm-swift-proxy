@@ -30,6 +30,7 @@ from swift_utils import (
     notify_peers_builders_available,
     mark_www_rings_deleted,
     cluster_sync_rings,
+    update_www_rings,
 )
 
 import charmhelpers.contrib.openstack.utils as openstack
@@ -226,6 +227,7 @@ def storage_changed():
 
     if should_balance([r for r in SWIFT_RINGS.itervalues()]):
         balance_rings()
+        update_www_rings()
         cluster_sync_rings()
         # Restart proxy here in case no config changes made (so
         # restart_on_change() ineffective).
@@ -319,22 +321,22 @@ def cluster_leader_actions():
 
     # Ensure all peers stopped before starting sync
     if all_peers_disabled(responses):
-        log("Syncing rings and builders across %s peer units" % (units),
-            level=DEBUG)
-
         key = 'peers-only'
         if not all_responses_equal(responses, key, must_exist=False):
-            peers_only = responses[0][key]
-            msg = ("Did not get equal responses from each peer unit for '%s'" %
+            msg = ("Did not get equal response from every peer unit for '%s'" %
                    (key))
             raise SwiftCharmException(msg)
         else:
-            peers_only = False
+            peers_only = responses[0].get(key, False)
+
+        log("Syncing rings and builders (num_peers=%s)" % (units), level=DEBUG)
 
         if not peers_only:
             # TODO: get ack from storage units that they are synced before
             # syncing proxies.
             notify_storage_rings_available()
+        else:
+            log("Syncing peers only", level=DEBUG)
 
         notify_peers_builders_available()
     else:

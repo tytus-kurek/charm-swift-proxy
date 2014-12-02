@@ -490,10 +490,7 @@ def balance_rings():
             log('Ring %s not rebalanced' % path, level=DEBUG)
 
     if not rebalanced:
-        log("Rings unchanged by rebalance - skipping sync", level=INFO)
-        return
-
-    update_www_rings()
+        log("Rings unchanged by rebalance", level=INFO)
 
 
 def mark_www_rings_deleted():
