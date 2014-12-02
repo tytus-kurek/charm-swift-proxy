@@ -27,3 +27,15 @@ class SwiftHooksTestCase(unittest.TestCase):
 
         responses = [{'a': 1, 'b': 2, 'c': 3}, {'a': 1, 'b': 3, 'c': 3}]
         self.assertFalse(swift_hooks.all_responses_equal(responses, 'b'))
+
+    def test_all_peers_disabled(self):
+        responses = [{'some-other-key': 0}]
+        self.assertFalse(swift_hooks.all_peers_disabled(responses))
+
+        responses = [{'disable-proxy-service': 1},
+                     {'disable-proxy-service': 0}]
+        self.assertFalse(swift_hooks.all_peers_disabled(responses))
+
+        responses = [{'disable-proxy-service': 0},
+                     {'disable-proxy-service': 0}]
+        self.assertTrue(swift_hooks.all_peers_disabled(responses))
