@@ -258,16 +258,31 @@ def cluster_joined(relation_id=None):
         private_addr = unit_get('private-address')
 
 
-def all_responses_equal(responses, key):
-    val = None
-    for r in responses:
-        if val and val != r[key]:
-            log("Responses not all equal for key '%s'" % (key), level=DEBUG)
-            return False
-        else:
-            val = r[key]
+def all_responses_equal(responses, key, must_exist=True):
+    """If key exists in responses, all value for it must be equal.
 
-    return True
+    If all equal return True. If key does not exist and must_exist is True
+    return False otherwise True.
+    """
+    sentinel = object()
+    val = None
+    all_equal = True
+    for r in responses:
+        _val = r.get(key, sentinel)
+        if val and val != _val:
+            all_equal = False
+            break
+        elif _val != sentinel:
+            val = _val
+
+    if must_exist and not val:
+        all_equal = False
+
+    if all_equal:
+        return True
+
+    log("Responses not all equal for key '%s'" % (key), level=DEBUG)
+    return False
 
 
 def all_peers_disabled(responses):
@@ -285,7 +300,7 @@ def all_peers_disabled(responses):
         return False
 
     rsp_int = [int(r.get(key, 1)) for r in responses]
-    # If any non-zero (not disabled) return False 
+    # If any non-zero (not disabled) return False
     if any(rsp_int):
         return False
 
@@ -308,8 +323,8 @@ def cluster_leader_actions():
             level=DEBUG)
 
         key = 'peers-only'
-        if all_responses_equal(responses, key):
-            peers_only = responses[key]
+        if not all_responses_equal(responses, key, must_exist=False):
+            peers_only = responses[0][key]
             msg = ("Did not get equal responses from each peer unit for '%s'" %
                    (key))
             raise SwiftCharmException(msg)
