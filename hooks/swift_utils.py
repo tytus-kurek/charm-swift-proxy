@@ -541,9 +541,13 @@ def broadcast_rings_available(peers=True, storage=True):
         # TODO: get ack from storage units that they are synced before
         # syncing proxies.
         notify_storage_rings_available()
+    else:
+        log("Skipping notify storage relations")
 
     if peers:
         notify_peers_builders_available()
+    else:
+        log("Skipping notify peer relations")
 
 
 def cluster_sync_rings(peers_only=False):
@@ -567,9 +571,7 @@ def cluster_sync_rings(peers_only=False):
     # relations. If we have been instructed to only broadcast to peers, do
     # nothing.
     if not peer_units():
-        if peers_only:
-            broadcast_rings_available(peers=False)
-
+        broadcast_rings_available(peers=False, storage=not peers_only)
         return
 
     log("Sending request to disable proxy service to all peers", level=INFO)
