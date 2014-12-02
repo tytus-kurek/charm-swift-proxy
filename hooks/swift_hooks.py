@@ -262,9 +262,12 @@ def all_responses_equal(responses, key):
     val = None
     for r in responses:
         if val and val != r[key]:
+            log("Responses not all equal for key '%s'" % (key), level=DEBUG)
             return False
         else:
             val = r[key]
+
+    return True
 
 
 def all_peers_disabled(responses):
