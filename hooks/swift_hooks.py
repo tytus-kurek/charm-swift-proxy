@@ -28,7 +28,7 @@ from swift_utils import (
     notify_storage_rings_available,
     notify_peers_builders_available,
     mark_www_rings_deleted,
-    disable_peer_apis,
+    cluster_sync_rings,
 )
 
 import charmhelpers.contrib.openstack.utils as openstack
@@ -134,8 +134,8 @@ def config_changed():
     update_min_part_hours()
 
     if config('force-cluster-ring-sync'):
-        log("Disabling peer proxy apis before syncing rings across cluster.")
-        disable_peer_apis()
+        log("Disabling peer proxy apis and syncing rings across cluster.")
+        cluster_sync_rings()
 
     for r_id in relation_ids('identity-service'):
         keystone_joined(relid=r_id)
@@ -224,10 +224,8 @@ def storage_changed():
                 add_to_ring(ring, node_settings)
 
     if should_balance([r for r in SWIFT_RINGS.itervalues()]):
-        # NOTE(dosaboy): this may not change anything but we still sync rings
-        #                in case a storage node needs re-syncing.
-        balance_rings(force_sync=True)
-        notify_storage_rings_available()
+        balance_rings()
+        cluster_sync_rings()
         # Restart proxy here in case no config changes made (so
         # restart_on_change() ineffective).
         service_restart('swift-proxy')
@@ -259,34 +257,50 @@ def cluster_joined(relation_id=None):
         private_addr = unit_get('private-address')
 
 
-@hooks.hook('cluster-relation-changed',
-            'cluster-relation-departed')
-@restart_on_change(restart_map())
-def cluster_changed():
-    if is_elected_leader(SWIFT_HA_RES):
-        rel_ids = relation_ids('cluster')
-        disabled = []
-        units = 0
-        for rid in rel_ids:
-            for unit in related_units(rid):
-                units += 1
-                disabled.append(relation_get('disable-proxy-service', rid=rid,
-                                             unit=unit))
+def all_peers_disabled(responses):
+    rsp_int = [int(d) for d in responses if d is not None]
+    # Ensure all 0 and all the same
+    if not any(rsp_int) and len(set(responses)) == 1:
+        return True
 
-        disabled = [int(d) for d in disabled if d is not None]
-        if not any(disabled) and len(set(disabled)) == 1:
-            log("Syncing rings and builders across %s peer units" % (units),
-                level=DEBUG)
-            notify_peers_builders_available()
-            notify_storage_rings_available()
-        else:
-            log("Not all apis disabled - skipping sync until all peers ready "
-                "(got %s)" % (disabled), level=INFO)
+    return False
 
-        CONFIGS.write_all()
-        return
 
+def cluster_leader_actions():
+    """Cluster relation hook actions to be performed by leader units."""
+    # Find out if all peer units have been disabled.
+    responses = []
+    units = 0
+    for rid in relation_ids('cluster'):
+        for unit in related_units(rid):
+            units += 1
+            # Each peer unit will set this to 0 to indicate that it has
+            # stopped its proxy service. We wait for all units to be
+            # stopped before triggering a sync. Peer services will be
+            # restarted once their rings are synced with the leader.
+            responses.append(relation_get('disable-proxy-service', rid=rid,
+                                          unit=unit))
+
+    # Ensure all peers stopped before starting sync
+    if all_peers_disabled(responses):
+        log("Syncing rings and builders across %s peer units" % (units),
+            level=DEBUG)
+        # TODO: get ack from storage units that they are synced before
+        # syncing proxies.
+        notify_storage_rings_available()
+        notify_peers_builders_available()
+    else:
+        log("Not all apis disabled - skipping sync until all peers ready "
+            "(got %s)" % (responses), level=INFO)
+
+    CONFIGS.write_all()
+
+
+def cluster_non_leader_actions():
+    """Cluster relation hook actions to be performed by non-leader units."""
     settings = relation_get()
+
+    # Check whether we have been requested to stop proxy service
     if int(settings.get('disable-proxy-service', 0)):
         log("Peer request to disable proxy api received", level=INFO)
         service_stop('swift-proxy')
@@ -295,8 +309,7 @@ def cluster_changed():
                                         'disable-proxy-service': 0})
         return
 
-    # If not the leader, see if there are any builder files we can sync from
-    # the leader.
+    # Check if there are any builder files we can sync from the leader.
     log("Non-leader peer - checking if updated rings available", level=DEBUG)
     broker = settings.get('builder-broker', None)
     if not broker:
@@ -311,13 +324,24 @@ def cluster_changed():
             "leader not ready?", level=WARNING)
         return None
 
+    # Re-enable the proxy once all builders are synced
     if builders_synced():
         log("Ring builders synced - starting proxy", level=INFO)
         CONFIGS.write_all()
         service_start('swift-proxy')
     else:
-        log("Not all builders synced yet - waiting for peer sync "
-            "before starting proxy", level=INFO)
+        log("Not all builders synced yet - waiting for peer sync before "
+            "starting proxy", level=INFO)
+
+
+@hooks.hook('cluster-relation-changed',
+            'cluster-relation-departed')
+@restart_on_change(restart_map())
+def cluster_changed():
+    if is_elected_leader(SWIFT_HA_RES):
+        cluster_leader_actions()
+    else:
+        cluster_non_leader_actions()
 
 
 @hooks.hook('ha-relation-changed')

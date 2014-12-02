@@ -16,16 +16,13 @@ class SwiftUtilsTestCase(unittest.TestCase):
     @mock.patch('swift_utils.config')
     @mock.patch('swift_utils.get_min_part_hours')
     @mock.patch('swift_utils.set_min_part_hours')
-    @mock.patch('swift_utils.should_balance')
-    @mock.patch('swift_utils.balance_rings')
-    @mock.patch('swift_utils.notify_storage_rings_available')
-    @mock.patch('swift_utils.notify_peers_builders_available')
-    def test_update_min_part_hours(self, mock_notify_peers,
-                                   mock_notify_storage, mock_balance_rings,
-                                   mock_should_balance, mock_set_min_hours,
-                                   mock_get_min_hours, mock_config,
-                                   mock_is_elected_leader, mock_path_exists,
-                                   mock_log):
+    @mock.patch('swift_utils.update_www_rings')
+    @mock.patch('swift_utils.cluster_sync_rings')
+    def test_update_min_part_hours(self, mock_cluster_sync_rings,
+                                   mock_update_www_rings,
+                                   mock_set_min_hours, mock_get_min_hours,
+                                   mock_config, mock_is_elected_leader,
+                                   mock_path_exists, mock_log):
 
         # Test blocker 1
         mock_is_elected_leader.return_value = False
@@ -49,33 +46,17 @@ class SwiftUtilsTestCase(unittest.TestCase):
         self.assertTrue(mock_get_min_hours.called)
         self.assertFalse(mock_set_min_hours.called)
 
-        # Test blocker 4
-        mock_path_exists.return_value = True
-        mock_is_elected_leader.return_value = True
-        mock_config.return_value = 10
-        mock_get_min_hours.return_value = 11
-        mock_should_balance.return_value = False
-        swift_utils.update_min_part_hours()
-        self.assertTrue(mock_config.called)
-        self.assertTrue(mock_get_min_hours.called)
-        self.assertTrue(mock_set_min_hours.called)
-        self.assertFalse(mock_balance_rings.called)
-        self.assertFalse(mock_notify_storage.called)
-        self.assertFalse(mock_notify_peers.called)
-
         # Test go through
         mock_path_exists.return_value = True
         mock_is_elected_leader.return_value = True
         mock_config.return_value = 10
         mock_get_min_hours.return_value = 11
-        mock_should_balance.return_value = True
         swift_utils.update_min_part_hours()
         self.assertTrue(mock_config.called)
         self.assertTrue(mock_get_min_hours.called)
         self.assertTrue(mock_set_min_hours.called)
-        self.assertTrue(mock_balance_rings.called)
-        self.assertTrue(mock_notify_storage.called)
-        self.assertTrue(mock_notify_peers.called)
+        self.assertTrue(mock_update_www_rings.called)
+        self.assertTrue(mock_cluster_sync_rings.called)
 
     @mock.patch('swift_utils.get_www_dir')
     def test_mark_www_rings_deleted(self, mock_get_www_dir):
