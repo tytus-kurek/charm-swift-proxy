@@ -331,7 +331,7 @@ def get_min_part_hours(ring):
 
 
 def set_min_part_hours(path, value):
-    cmd = ['swift-ring-builder', path, 'set_min_part_hours', value]
+    cmd = ['swift-ring-builder', path, 'set_min_part_hours', str(value)]
     p = subprocess.Popen(cmd)
     p.communicate()
     rc = p.returncode
