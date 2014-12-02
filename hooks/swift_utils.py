@@ -60,9 +60,11 @@ MEMCACHED_CONF = '/etc/memcached.conf'
 SWIFT_RINGS_CONF = '/etc/apache2/conf.d/swift-rings'
 SWIFT_RINGS_24_CONF = '/etc/apache2/conf-available/swift-rings.conf'
 HAPROXY_CONF = '/etc/haproxy/haproxy.cfg'
-APACHE_SITE_CONF = '/etc/apache2/sites-available/openstack_https_frontend'
-APACHE_SITE_24_CONF = '/etc/apache2/sites-available/' \
-    'openstack_https_frontend.conf'
+APACHE_SITES_AVAILABLE = '/etc/apache2/sites-available'
+APACHE_SITE_CONF = os.path.join(APACHE_SITES_AVAILABLE,
+                                'openstack_https_frontend')
+APACHE_SITE_24_CONF = os.path.join(APACHE_SITES_AVAILABLE,
+                                   'openstack_https_frontend.conf')
 
 WWW_DIR = '/var/www/swift-rings'
 ALTERNATE_WWW_DIR = '/var/www/html/swift-rings'
@@ -136,6 +138,10 @@ CONFIG_FILES = OrderedDict([
         'services': ['memcached'],
     }),
 ])
+
+
+class SwiftCharmException(Exception):
+    pass
 
 
 def register_configs():
@@ -324,10 +330,14 @@ def get_min_part_hours(ring):
     return builder.min_part_hours
 
 
-def set_min_part_hours(path, min_part_hours):
-    builder = _load_builder(path)
-    builder.min_part_hours = min_part_hours
-    _write_ring(builder, path)
+def set_min_part_hours(path, value):
+    cmd = ['swift-ring-builder', path, 'set_min_part_hours', value]
+    p = subprocess.Popen(cmd)
+    p.communicate()
+    rc = p.returncode
+    if rc != 0:
+        raise SwiftCharmException("Failed to set min_part_hours=%s on %s" %
+                                  (value, path))
 
 
 def get_zone(assignment_policy):
@@ -610,8 +620,14 @@ def update_min_part_hours():
             if min_part_hours != new_min_part_hours:
                 log("Setting ring %s min_part_hours to %s" %
                     (ring, new_min_part_hours), level=INFO)
-                set_min_part_hours(path, new_min_part_hours)
-                resync_builders = True
+                try:
+                    set_min_part_hours(path, new_min_part_hours)
+                except SwiftCharmException as exc:
+                    # TODO: ignore for now since this should not be critical
+                    # but in the future we should support a rollback.
+                    log(str(exc), level=WARNING)
+                else:
+                    resync_builders = True
 
     if resync_builders:
         if should_balance([r for r in SWIFT_RINGS.itervalues()]):
