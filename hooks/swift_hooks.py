@@ -284,8 +284,8 @@ def all_peers_disabled(responses):
     if not all_responses_equal(responses, key):
         return False
 
-    rsp_int = [int(d) for d in responses.get(key, 1)]
-    # Ensure all 0 and all the same
+    rsp_int = [int(r.get(key, 1)) for r in responses]
+    # If any non-zero (not disabled) return False 
     if any(rsp_int):
         return False
 
