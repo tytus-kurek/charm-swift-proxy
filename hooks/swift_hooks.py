@@ -6,6 +6,7 @@ import subprocess
 import uuid
 
 from swift_utils import (
+    SwiftCharmException,
     register_configs,
     restart_map,
     determine_packages,
@@ -257,13 +258,35 @@ def cluster_joined(relation_id=None):
         private_addr = unit_get('private-address')
 
 
-def all_peers_disabled(responses):
-    rsp_int = [int(d) for d in responses if d is not None]
-    # Ensure all 0 and all the same
-    if not any(rsp_int) and len(set(responses)) == 1:
-        return True
+def all_responses_equal(responses, key):
+    val = None
+    for r in responses:
+        if val and val != r[key]:
+            return False
+        else:
+            val = r[key]
 
-    return False
+
+def all_peers_disabled(responses):
+    """Establish whether all proxies have disables their apis.
+
+    Each peer unit will set disable-proxy-service to 0 to indicate hat it has
+    stopped its proxy service. We wait for all units to be stopped before
+    triggering a sync. Peer services will be  restarted once their rings are
+    synced with the leader.
+
+    To be safe, default expectation is that api is still running.
+    """
+    key = 'disable-proxy-service'
+    if not all_responses_equal(responses, key):
+        return False
+
+    rsp_int = [int(d) for d in responses.get(key, 1)]
+    # Ensure all 0 and all the same
+    if any(rsp_int):
+        return False
+
+    return True
 
 
 def cluster_leader_actions():
@@ -274,20 +297,27 @@ def cluster_leader_actions():
     for rid in relation_ids('cluster'):
         for unit in related_units(rid):
             units += 1
-            # Each peer unit will set this to 0 to indicate that it has
-            # stopped its proxy service. We wait for all units to be
-            # stopped before triggering a sync. Peer services will be
-            # restarted once their rings are synced with the leader.
-            responses.append(relation_get('disable-proxy-service', rid=rid,
-                                          unit=unit))
+            responses.append(relation_get(rid=rid, unit=unit))
 
     # Ensure all peers stopped before starting sync
     if all_peers_disabled(responses):
         log("Syncing rings and builders across %s peer units" % (units),
             level=DEBUG)
-        # TODO: get ack from storage units that they are synced before
-        # syncing proxies.
-        notify_storage_rings_available()
+
+        key = 'peers-only'
+        if all_responses_equal(responses, key):
+            peers_only = responses[key]
+            msg = ("Did not get equal responses from each peer unit for '%s'" %
+                   (key))
+            raise SwiftCharmException(msg)
+        else:
+            peers_only = False
+
+        if not peers_only:
+            # TODO: get ack from storage units that they are synced before
+            # syncing proxies.
+            notify_storage_rings_available()
+
         notify_peers_builders_available()
     else:
         log("Not all apis disabled - skipping sync until all peers ready "
