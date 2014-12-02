@@ -563,8 +563,13 @@ def cluster_sync_rings(peers_only=False):
         # Only the leader can do this.
         return
 
+    # If we have no peer units just go ahead and broadcast to storage
+    # relations. If we have been instructed to only broadcast to peers, do
+    # nothing.
     if not peer_units():
-        broadcast_rings_available(peers=False)
+        if peers_only:
+            broadcast_rings_available(peers=False)
+
         return
 
     log("Sending request to disable proxy service to all peers", level=INFO)
