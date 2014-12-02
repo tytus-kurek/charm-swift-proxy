@@ -25,6 +25,7 @@ from charmhelpers.contrib.openstack.utils import (
 from charmhelpers.contrib.hahelpers.cluster import (
     is_elected_leader,
     is_clustered,
+    peer_units,
 )
 from charmhelpers.core.hookenv import (
     log,
@@ -535,6 +536,16 @@ def notify_peers_builders_available():
                                         'disable-proxy-service': 0})
 
 
+def broadcast_rings_available(peers=True, storage=True):
+    if storage:
+        # TODO: get ack from storage units that they are synced before
+        # syncing proxies.
+        notify_storage_rings_available()
+
+    if peers:
+        notify_peers_builders_available()
+
+
 def cluster_sync_rings(peers_only=False):
     """Notify peer relations that they should disable their proxy services.
 
@@ -550,6 +561,10 @@ def cluster_sync_rings(peers_only=False):
     """
     if not is_elected_leader(SWIFT_HA_RES):
         # Only the leader can do this.
+        return
+
+    if not peer_units():
+        broadcast_rings_available(peers=False)
         return
 
     log("Sending request to disable proxy service to all peers", level=INFO)

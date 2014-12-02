@@ -26,8 +26,7 @@ from swift_utils import (
     builders_synced,
     sync_proxy_rings,
     update_min_part_hours,
-    notify_storage_rings_available,
-    notify_peers_builders_available,
+    broadcast_rings_available,
     mark_www_rings_deleted,
     cluster_sync_rings,
     update_www_rings,
@@ -313,10 +312,8 @@ def cluster_leader_actions():
     """Cluster relation hook actions to be performed by leader units."""
     # Find out if all peer units have been disabled.
     responses = []
-    units = 0
     for rid in relation_ids('cluster'):
         for unit in related_units(rid):
-            units += 1
             responses.append(relation_get(rid=rid, unit=unit))
 
     # Ensure all peers stopped before starting sync
@@ -326,19 +323,10 @@ def cluster_leader_actions():
             msg = ("Did not get equal response from every peer unit for '%s'" %
                    (key))
             raise SwiftCharmException(msg)
-        else:
-            peers_only = responses[0].get(key, False)
 
-        log("Syncing rings and builders (num_peers=%s)" % (units), level=DEBUG)
-
-        if not peers_only:
-            # TODO: get ack from storage units that they are synced before
-            # syncing proxies.
-            notify_storage_rings_available()
-        else:
-            log("Syncing peers only", level=DEBUG)
-
-        notify_peers_builders_available()
+        log("Syncing rings and builders", level=DEBUG)
+        peers = not responses[0].get(key, False)
+        broadcast_rings_available(peers=peers)
     else:
         log("Not all apis disabled - skipping sync until all peers ready "
             "(got %s)" % (responses), level=INFO)
