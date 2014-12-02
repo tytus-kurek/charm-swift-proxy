@@ -464,7 +464,18 @@ def sync_proxy_rings(broker_url):
         subprocess.check_call(cmd)
 
 
-def balance_rings(force_sync=False):
+def update_www_rings():
+    """Copy rings to apache www dir."""
+    www_dir = get_www_dir()
+    for ring, builder_path in SWIFT_RINGS.iteritems():
+        ringfile = '%s.ring.gz' % ring
+        shutil.copyfile(os.path.join(SWIFT_CONF_DIR, ringfile),
+                        os.path.join(www_dir, ringfile))
+        shutil.copyfile(builder_path,
+                        os.path.join(www_dir, os.path.basename(builder_path)))
+
+
+def balance_rings():
     """Rebalance each ring and notify peers that new rings are available."""
     if not is_elected_leader(SWIFT_HA_RES):
         log("Balance rings called by non-leader - skipping", level=WARNING)
@@ -478,19 +489,11 @@ def balance_rings(force_sync=False):
         else:
             log('Ring %s not rebalanced' % path, level=DEBUG)
 
-    if not rebalanced and not force_sync:
+    if not rebalanced:
         log("Rings unchanged by rebalance - skipping sync", level=INFO)
         return
 
-    www_dir = get_www_dir()
-    for ring, builder_path in SWIFT_RINGS.iteritems():
-        ringfile = '%s.ring.gz' % ring
-        shutil.copyfile(os.path.join(SWIFT_CONF_DIR, ringfile),
-                        os.path.join(www_dir, ringfile))
-        shutil.copyfile(builder_path,
-                        os.path.join(www_dir, os.path.basename(builder_path)))
-
-    notify_peers_builders_available()
+    update_www_rings()
 
 
 def mark_www_rings_deleted():
@@ -535,10 +538,18 @@ def notify_peers_builders_available():
                                         'disable-proxy-service': 0})
 
 
-def disable_peer_apis():
+def cluster_sync_rings(peers_only=False):
     """Notify peer relations that they should disable their proxy services.
 
-    This should only be called by the leader unit. Once update has been
+    Peer units will then be expected to do a relation_set with
+    disable-proxy-service set 0. Once all peers have responded, the leader
+    will send out notification to all relations that rings are available for
+    sync.
+
+    If peers_only is True, only peer units will be synced. This is typically
+    used when only builder files have been changed.
+
+    This should only be called by the leader unit.
     """
     if not is_elected_leader(SWIFT_HA_RES):
         # Only the leader can do this.
@@ -547,10 +558,17 @@ def disable_peer_apis():
     log("Sending request to disable proxy service to all peers", level=INFO)
     rel_ids = relation_ids('cluster')
     trigger = str(uuid.uuid4())
+    if peers_only:
+        peers_only = 1
+    else:
+        peers_only = 0
+
     for rid in rel_ids:
+        # NOTE: we set a trigger to ensure the hook is fired
         relation_set(relation_id=rid,
                      relation_settings={'trigger': trigger,
-                                        'disable-proxy-service': 1})
+                                        'disable-proxy-service': 1,
+                                        'peers-only': peers_only})
 
 
 def notify_storage_rings_available():
@@ -611,10 +629,13 @@ def update_min_part_hours():
         # Only the leader can do this.
         return
 
+    # NOTE: no need to stop the proxy since we are not changing the rings,
+    # only the builder.
+
     new_min_part_hours = config('min-hours')
     resync_builders = False
     # Only update if all exist
-    if all([os.path.exists(p) for r, p in SWIFT_RINGS.iteritems()]):
+    if all([os.path.exists(p) for p in SWIFT_RINGS.itervalues()]):
         for ring, path in SWIFT_RINGS.iteritems():
             min_part_hours = get_min_part_hours(path)
             if min_part_hours != new_min_part_hours:
@@ -630,7 +651,5 @@ def update_min_part_hours():
                     resync_builders = True
 
     if resync_builders:
-        if should_balance([r for r in SWIFT_RINGS.itervalues()]):
-            balance_rings()
-            notify_peers_builders_available()
-            notify_storage_rings_available()
+        update_www_rings()
+        cluster_sync_rings(peers_only=True)
