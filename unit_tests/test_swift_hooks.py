@@ -47,3 +47,18 @@ class SwiftHooksTestCase(unittest.TestCase):
                      {'stop-proxy-service-ack': token1},
                      {'some-other-key': token1}]
         self.assertFalse(swift_hooks.all_peers_stopped(responses))
+
+    def test_get_first_available_value(self):
+        rsps = [{'key1': 'A'}, {'key1': 'B'}]
+        self.assertEqual('A',
+                         swift_hooks.get_first_available_value(rsps, 'key1'))
+
+        rsps = [{'key2': 'A'}, {'key1': 'B'}]
+        self.assertEqual('B',
+                         swift_hooks.get_first_available_value(rsps, 'key1'))
+
+        rsps = [{'key2': 'A'}, {'key1': 'B'}]
+        self.assertIsNone(swift_hooks.get_first_available_value(rsps, 'key3'))
+
+        rsps = []
+        self.assertIsNone(swift_hooks.get_first_available_value(rsps, 'key3'))

@@ -305,7 +305,7 @@ def all_peers_stopped(responses):
 def get_first_available_value(responses, key):
     for r in responses:
         if key in r:
-            return r['key']
+            return r[key]
 
     return None
 
