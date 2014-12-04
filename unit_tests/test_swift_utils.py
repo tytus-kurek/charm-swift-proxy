@@ -66,3 +66,43 @@ class SwiftUtilsTestCase(unittest.TestCase):
             swift_utils.mark_www_rings_deleted()
         finally:
             shutil.rmtree(tmpdir)
+
+    @mock.patch('swift_utils.uuid')
+    def test_cluster_rpc_stop_proxy_request(self, mock_uuid):
+        mock_uuid.uuid4.return_value = 'test-uuid'
+        rpc = swift_utils.SwiftProxyClusterRPC()
+        rq = rpc.stop_proxy_request(peers_only=True)
+        self.assertEqual({'trigger': 'test-uuid',
+                          'builder-broker': None,
+                          'peers-only': True,
+                          'stop-proxy-service': 'test-uuid',
+                          'stop-proxy-service-ack': None}, rq)
+
+        rq = rpc.stop_proxy_request()
+        self.assertEqual({'trigger': 'test-uuid',
+                          'builder-broker': None,
+                          'peers-only': None,
+                          'stop-proxy-service': 'test-uuid',
+                          'stop-proxy-service-ack': None}, rq)
+
+    @mock.patch('swift_utils.uuid')
+    def test_cluster_rpc_stop_proxy_ack(self, mock_uuid):
+        mock_uuid.uuid4.return_value = 'token2'
+        rpc = swift_utils.SwiftProxyClusterRPC()
+        rq = rpc.stop_proxy_ack('token1')
+        self.assertEqual({'trigger': 'token2',
+                          'builder-broker': None,
+                          'peers-only': None,
+                          'stop-proxy-service': None,
+                          'stop-proxy-service-ack': 'token1'}, rq)
+
+    @mock.patch('swift_utils.uuid')
+    def test_cluster_rpc_sync_request(self, mock_uuid):
+        mock_uuid.uuid4.return_value = 'token1'
+        rpc = swift_utils.SwiftProxyClusterRPC()
+        rq = rpc.sync_rings_request('HostA')
+        self.assertEqual({'trigger': 'token1',
+                          'builder-broker': 'HostA',
+                          'peers-only': None,
+                          'stop-proxy-service': None,
+                          'stop-proxy-service-ack': None}, rq)
