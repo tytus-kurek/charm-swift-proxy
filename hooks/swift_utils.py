@@ -204,6 +204,41 @@ class SwiftProxyClusterRPC(object):
         return rq
 
 
+def get_first_available_value(responses, key, default=None):
+    for r in responses:
+        if key in r:
+            return r[key]
+
+    return default
+
+
+def all_responses_equal(responses, key, must_exist=True):
+    """If key exists in responses, all values for it must be equal.
+
+    If all equal return True. If key does not exist and must_exist is True
+    return False otherwise True.
+    """
+    sentinel = object()
+    val = None
+    all_equal = True
+    for r in responses:
+        _val = r.get(key, sentinel)
+        if val is not None and val != _val:
+            all_equal = False
+            break
+        elif _val != sentinel:
+            val = _val
+
+    if must_exist and val is None:
+        all_equal = False
+
+    if all_equal:
+        return True
+
+    log("Responses not all equal for key '%s'" % (key), level=DEBUG)
+    return False
+
+
 def register_configs():
     """Register config files with their respective contexts.
 
