@@ -302,12 +302,12 @@ def all_peers_stopped(responses):
     return True
 
 
-def get_first_available_value(responses, key):
+def get_first_available_value(responses, key, default=None):
     for r in responses:
         if key in r:
             return r[key]
 
-    return None
+    return default
 
 
 def cluster_leader_actions():
@@ -329,8 +329,10 @@ def cluster_leader_actions():
                    (key))
             raise SwiftProxyCharmException(msg)
 
-        log("Syncing rings and builders", level=DEBUG)
-        peers_only = get_first_available_value(responses, key)
+        peers_only = get_first_available_value(responses, key, default=False)
+        log("Syncing rings and builders (peers-only=%s (%s))" % (peers_only,
+                                                                 type(peers_only)),
+            level=DEBUG)
         broadcast_rings_available(storage=not peers_only)
     else:
         log("Not all peer apis stopped - skipping sync until all peers ready "
