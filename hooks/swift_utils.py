@@ -640,10 +640,6 @@ def cluster_sync_rings(peers_only=False):
 
     rel_ids = relation_ids('cluster')
     trigger = str(uuid.uuid4())
-    if peers_only:
-        peers_only = 1
-    else:
-        peers_only = 0
 
     log("Sending request to stop proxy service to all peers (%s)" % (trigger),
         level=INFO)
