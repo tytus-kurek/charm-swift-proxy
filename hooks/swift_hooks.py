@@ -3,7 +3,6 @@
 import os
 import sys
 import subprocess
-import uuid
 
 from swift_utils import (
     SwiftCharmException,
@@ -48,7 +47,6 @@ from charmhelpers.core.hookenv import (
     DEBUG,
     INFO,
     WARNING,
-    ERROR,
     Hooks, UnregisteredHookError,
     open_port,
 )
@@ -175,10 +173,10 @@ def storage_joined():
             "synced", level=INFO)
         service_stop('swift-proxy')
 
-        # Mark rings in the www directory as stale since this unit is no longer
-        # responsible distributing rings but may become responsible again at
-        # some time in the future so were do this to avoid storage nodes
-        # getting out-of-date rings.
+        # This unit is not currently responsible for distributing rings but
+        # may become so at some time in the future so we do this to avoid the
+        # possibility of storage nodes getting out-of-date rings by deprecating
+        # any existing ones from the www dir.
         mark_www_rings_deleted()
 
 
@@ -260,7 +258,7 @@ def cluster_joined(relation_id=None):
 
 
 def all_responses_equal(responses, key, must_exist=True):
-    """If key exists in responses, all value for it must be equal.
+    """If key exists in responses, all values for it must be equal.
 
     If all equal return True. If key does not exist and must_exist is True
     return False otherwise True.
@@ -286,23 +284,18 @@ def all_responses_equal(responses, key, must_exist=True):
     return False
 
 
-def all_peers_disabled(responses):
-    """Establish whether all proxies have disables their apis.
+def all_peers_stopped(responses):
+    """Establish whether all peers have stopped their proxy services.
 
-    Each peer unit will set disable-proxy-service to 0 to indicate hat it has
-    stopped its proxy service. We wait for all units to be stopped before
-    triggering a sync. Peer services will be  restarted once their rings are
-    synced with the leader.
+    Each peer unit will set stop-proxy-service-rsp to rq value to indicate that
+    it has stopped its proxy service. We wait for all units to be stopped
+    before triggering a sync. Peer services will be  restarted once their rings
+    are synced with the leader.
 
     To be safe, default expectation is that api is still running.
     """
-    key = 'disable-proxy-service'
+    key = 'stop-proxy-service-rsp'
     if not all_responses_equal(responses, key):
-        return False
-
-    rsp_int = [int(r.get(key, 1)) for r in responses]
-    # If any non-zero (not disabled) return False
-    if any(rsp_int):
         return False
 
     return True
@@ -310,14 +303,14 @@ def all_peers_disabled(responses):
 
 def cluster_leader_actions():
     """Cluster relation hook actions to be performed by leader units."""
-    # Find out if all peer units have been disabled.
+    # Find out if all peer units have been stopped.
     responses = []
     for rid in relation_ids('cluster'):
         for unit in related_units(rid):
             responses.append(relation_get(rid=rid, unit=unit))
 
     # Ensure all peers stopped before starting sync
-    if all_peers_disabled(responses):
+    if all_peers_stopped(responses):
         key = 'peers-only'
         if not all_responses_equal(responses, key, must_exist=False):
             msg = ("Did not get equal response from every peer unit for '%s'" %
@@ -328,7 +321,7 @@ def cluster_leader_actions():
         peers = not responses[0].get(key, False)
         broadcast_rings_available(peers=peers)
     else:
-        log("Not all apis disabled - skipping sync until all peers ready "
+        log("Not all peer apis stopped - skipping sync until all peers ready "
             "(got %s)" % (responses), level=INFO)
 
     CONFIGS.write_all()
@@ -339,12 +332,12 @@ def cluster_non_leader_actions():
     settings = relation_get()
 
     # Check whether we have been requested to stop proxy service
-    if int(settings.get('disable-proxy-service', 0)):
-        log("Peer request to disable proxy api received", level=INFO)
+    stop_proxy_rq = settings.get('stop-proxy-service-rq')
+    if stop_proxy_rq:
+        log("Peer request to stop proxy service received", level=INFO)
         service_stop('swift-proxy')
-        trigger = str(uuid.uuid4())
-        relation_set(relation_settings={'trigger': trigger,
-                                        'disable-proxy-service': 0})
+        relation_set(relation_settings={'stop-proxy-service-rsp':
+                                        stop_proxy_rq})
         return
 
     # Check if there are any builder files we can sync from the leader.
@@ -402,8 +395,8 @@ def ha_relation_joined():
     corosync_mcastport = config('ha-mcastport')
     vip = config('vip')
     if not vip:
-        log('Unable to configure hacluster as vip not provided', level=ERROR)
-        sys.exit(1)
+        msg = 'Unable to configure hacluster as vip not provided'
+        raise SwiftCharmException(msg)
 
     # Obtain resources
     resources = {'res_swift_haproxy': 'lsb:haproxy'}

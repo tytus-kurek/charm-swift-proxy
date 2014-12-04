@@ -1,5 +1,6 @@
 import mock
 import unittest
+import uuid
 
 
 with mock.patch('charmhelpers.core.hookenv.log'):
@@ -28,14 +29,21 @@ class SwiftHooksTestCase(unittest.TestCase):
         responses = [{'a': 1, 'b': 2, 'c': 3}, {'a': 1, 'b': 3, 'c': 3}]
         self.assertFalse(swift_hooks.all_responses_equal(responses, 'b'))
 
-    def test_all_peers_disabled(self):
-        responses = [{'some-other-key': 0}]
-        self.assertFalse(swift_hooks.all_peers_disabled(responses))
+    def test_all_peers_stopped(self):
+        token1 = str(uuid.uuid4())
+        token2 = str(uuid.uuid4())
+        responses = [{'some-other-key': token1}]
+        self.assertFalse(swift_hooks.all_peers_stopped(responses))
 
-        responses = [{'disable-proxy-service': 1},
-                     {'disable-proxy-service': 0}]
-        self.assertFalse(swift_hooks.all_peers_disabled(responses))
+        responses = [{'stop-proxy-service-rsp': token1},
+                     {'stop-proxy-service-rsp': token2}]
+        self.assertFalse(swift_hooks.all_peers_stopped(responses))
 
-        responses = [{'disable-proxy-service': 0},
-                     {'disable-proxy-service': 0}]
-        self.assertTrue(swift_hooks.all_peers_disabled(responses))
+        responses = [{'stop-proxy-service-rsp': token1},
+                     {'stop-proxy-service-rsp': token1}]
+        self.assertTrue(swift_hooks.all_peers_stopped(responses))
+
+        responses = [{'stop-proxy-service-rsp': token1},
+                     {'stop-proxy-service-rsp': token1},
+                     {'some-other-key': token1}]
+        self.assertFalse(swift_hooks.all_peers_stopped(responses))

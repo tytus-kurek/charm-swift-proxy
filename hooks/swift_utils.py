@@ -363,7 +363,7 @@ def get_zone(assignment_policy):
         return set(potential_zones).pop()
     else:
         msg = ('Invalid zone assignment policy: %s' % assignment_policy)
-        raise Exception(msg)
+        raise SwiftCharmException(msg)
 
 
 def balance_ring(ring_path):
@@ -388,7 +388,7 @@ def balance_ring(ring_path):
         return False
     else:
         msg = ('balance_ring: %s returned %s' % (cmd, rc))
-        raise Exception(msg)
+        raise SwiftCharmException(msg)
 
 
 def should_balance(rings):
@@ -427,8 +427,9 @@ def do_openstack_upgrade(configs):
 def setup_ipv6():
     ubuntu_rel = lsb_release()['DISTRIB_CODENAME'].lower()
     if ubuntu_rel < "trusty":
-        raise Exception("IPv6 is not supported in the charms for Ubuntu "
-                        "versions less than Trusty 14.04")
+        msg = ("IPv6 is not supported in the charms for Ubuntu versions less "
+               "than Trusty 14.04")
+        raise SwiftCharmException(msg)
 
     # NOTE(xianghui): Need to install haproxy(1.5.3) from trusty-backports
     # to support ipv6 address, so check is required to make sure not
@@ -527,13 +528,10 @@ def notify_peers_builders_available():
     trigger = str(uuid.uuid4())
     for rid in relation_ids('cluster'):
         log("Notifying rid=%s" % (rid), level=DEBUG)
-        # NOTE(dosaboy): we add some random data to the relation settings
-        # otherwise subsequent calls will not fire (since hostname is always
-        # the same).
         relation_set(relation_id=rid,
                      relation_settings={'trigger': trigger,
                                         'builder-broker': hostname,
-                                        'disable-proxy-service': 0})
+                                        'stop-proxy-service-rq': None})
 
 
 def broadcast_rings_available(peers=True, storage=True):
@@ -551,12 +549,12 @@ def broadcast_rings_available(peers=True, storage=True):
 
 
 def cluster_sync_rings(peers_only=False):
-    """Notify peer relations that they should disable their proxy services.
+    """Notify peer relations that they should stop their proxy services.
 
     Peer units will then be expected to do a relation_set with
-    disable-proxy-service set 0. Once all peers have responded, the leader
-    will send out notification to all relations that rings are available for
-    sync.
+    stop-proxy-service-rsp set rq value. Once all peers have responded, the
+    leader will send out notification to all relations that rings are available
+    for sync.
 
     If peers_only is True, only peer units will be synced. This is typically
     used when only builder files have been changed.
@@ -574,7 +572,7 @@ def cluster_sync_rings(peers_only=False):
         broadcast_rings_available(peers=False, storage=not peers_only)
         return
 
-    log("Sending request to disable proxy service to all peers", level=INFO)
+    log("Sending request to stop proxy service to all peers", level=INFO)
     rel_ids = relation_ids('cluster')
     trigger = str(uuid.uuid4())
     if peers_only:
@@ -583,10 +581,9 @@ def cluster_sync_rings(peers_only=False):
         peers_only = 0
 
     for rid in rel_ids:
-        # NOTE: we set a trigger to ensure the hook is fired
+        # NOTE: random data in requests should ensure this gets fired on peer
         relation_set(relation_id=rid,
-                     relation_settings={'trigger': trigger,
-                                        'disable-proxy-service': 1,
+                     relation_settings={'stop-proxy-service-rq': trigger,
                                         'peers-only': peers_only})
 
 
