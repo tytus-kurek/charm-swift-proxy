@@ -345,7 +345,7 @@ def cluster_non_leader_actions():
             level=INFO)
         service_stop('swift-proxy')
         rq = SwiftProxyClusterRPC().stop_proxy_ack(rq_token)
-        relation_set(settings=rq)
+        relation_set(relation_settings=rq)
         return
 
     # Check if there are any builder files we can sync from the leader.
