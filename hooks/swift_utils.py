@@ -142,8 +142,40 @@ CONFIG_FILES = OrderedDict([
 ])
 
 
-class SwiftCharmException(Exception):
+class SwiftProxyCharmException(Exception):
     pass
+
+
+class SwiftProxyClusterRPC(object):
+
+    def __init__(self, version=1):
+        self._version = version
+        # Everything must be None by default so it gets dropped from the
+        # relation unless we want it to be set.
+        self.blanks = {1: {'trigger': None,
+                           'builder-broker': None,
+                           'stop-proxy-service': None,
+                           'stop-proxy-service-ack': None,
+                           'peers-only': None}}
+
+    def stop_proxy_request(self, peers_only=None):
+        rq = self.blanks[self._version]
+        rq['trigger'] = str(uuid.uuid4())
+        rq['stop-proxy-service'] = rq['trigger']
+        rq['peers-only'] = peers_only
+        return rq
+
+    def stop_proxy_ack(self, token):
+        rq = self.blanks[self._version]
+        rq['trigger'] = str(uuid.uuid4())
+        rq['stop-proxy-service-ack'] = token
+        return rq
+
+    def sync_rings_request(self, broker_host):
+        rq = self.blanks[self._version]
+        rq['trigger'] = str(uuid.uuid4())
+        rq['builder-broker'] = broker_host
+        return rq
 
 
 def register_configs():
@@ -338,8 +370,8 @@ def set_min_part_hours(path, value):
     p.communicate()
     rc = p.returncode
     if rc != 0:
-        raise SwiftCharmException("Failed to set min_part_hours=%s on %s" %
-                                  (value, path))
+        msg = ("Failed to set min_part_hours=%s on %s" % (value, path))
+        raise SwiftProxyCharmException(msg)
 
 
 def get_zone(assignment_policy):
@@ -364,7 +396,7 @@ def get_zone(assignment_policy):
         return set(potential_zones).pop()
     else:
         msg = ('Invalid zone assignment policy: %s' % assignment_policy)
-        raise SwiftCharmException(msg)
+        raise SwiftProxyCharmException(msg)
 
 
 def balance_ring(ring_path):
@@ -389,7 +421,7 @@ def balance_ring(ring_path):
         return False
     else:
         msg = ('balance_ring: %s returned %s' % (cmd, rc))
-        raise SwiftCharmException(msg)
+        raise SwiftProxyCharmException(msg)
 
 
 def should_balance(rings):
@@ -430,7 +462,7 @@ def setup_ipv6():
     if ubuntu_rel < "trusty":
         msg = ("IPv6 is not supported in the charms for Ubuntu versions less "
                "than Trusty 14.04")
-        raise SwiftCharmException(msg)
+        raise SwiftProxyCharmException(msg)
 
     # NOTE(xianghui): Need to install haproxy(1.5.3) from trusty-backports
     # to support ipv6 address, so check is required to make sure not
@@ -458,19 +490,19 @@ def sync_proxy_rings(broker_url):
     for server in ['account', 'object', 'container']:
         url = '%s/%s.builder' % (broker_url, server)
         log('Fetching %s.' % url, level=DEBUG)
-        file = "%s.builder" % (server)
+        builder = "%s.builder" % (server)
         cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
-               os.path.join(tmpdir, file)]
+               os.path.join(tmpdir, builder)]
         subprocess.check_call(cmd)
-        synced.append(file)
+        synced.append(builder)
 
         url = '%s/%s.ring.gz' % (broker_url, server)
         log('Fetching %s.' % url, level=DEBUG)
-        file = '%s.ring.gz' % (server)
+        ring = '%s.ring.gz' % (server)
         cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
-               os.path.join(tmpdir, file)]
+               os.path.join(tmpdir, ring)]
         subprocess.check_call(cmd)
-        synced.append(file)
+        synced.append(ring)
 
     # Once all have been successfully downloaded, move them to actual location.
     for file in synced:
@@ -536,13 +568,10 @@ def notify_peers_builders_available():
     hostname = format_ipv6_addr(hostname) or hostname
     # Notify peers that builders are available
     log("Notifying peer(s) that rings are ready for sync.", level=INFO)
-    trigger = str(uuid.uuid4())
+    rq = SwiftProxyClusterRPC().sync_rings_request(hostname)
     for rid in relation_ids('cluster'):
         log("Notifying rid=%s" % (rid), level=DEBUG)
-        relation_set(relation_id=rid,
-                     relation_settings={'trigger': trigger,
-                                        'builder-broker': hostname,
-                                        'stop-proxy-service-rq': None})
+        relation_set(relation_id=rid, relation_settings=rq)
 
 
 def broadcast_rings_available(peers=True, storage=True):
@@ -592,11 +621,9 @@ def cluster_sync_rings(peers_only=False):
 
     log("Sending request to stop proxy service to all peers (%s)" % (trigger),
         level=INFO)
+    rq = SwiftProxyClusterRPC().stop_proxy_request(peers_only)
     for rid in rel_ids:
-        # NOTE: random data in requests should ensure this gets fired on peer
-        relation_set(relation_id=rid,
-                     relation_settings={'stop-proxy-service-rq': trigger,
-                                        'peers-only': peers_only})
+        relation_set(relation_id=rid, relation_settings=rq)
 
 
 def notify_storage_rings_available():
@@ -671,7 +698,7 @@ def update_min_part_hours():
                     (ring, new_min_part_hours), level=INFO)
                 try:
                     set_min_part_hours(path, new_min_part_hours)
-                except SwiftCharmException as exc:
+                except SwiftProxyCharmException as exc:
                     # TODO: ignore for now since this should not be critical
                     # but in the future we should support a rollback.
                     log(str(exc), level=WARNING)

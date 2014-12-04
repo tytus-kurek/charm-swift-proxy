@@ -5,7 +5,7 @@ import sys
 import subprocess
 
 from swift_utils import (
-    SwiftCharmException,
+    SwiftProxyCharmException,
     register_configs,
     restart_map,
     determine_packages,
@@ -29,6 +29,7 @@ from swift_utils import (
     mark_www_rings_deleted,
     cluster_sync_rings,
     update_www_rings,
+    SwiftProxyClusterRPC,
 )
 
 import charmhelpers.contrib.openstack.utils as openstack
@@ -318,7 +319,7 @@ def cluster_leader_actions():
         if not all_responses_equal(responses, key, must_exist=False):
             msg = ("Did not get equal response from every peer unit for '%s'" %
                    (key))
-            raise SwiftCharmException(msg)
+            raise SwiftProxyCharmException(msg)
 
         log("Syncing rings and builders", level=DEBUG)
         peers = not responses[0].get(key, False)
@@ -338,13 +339,13 @@ def cluster_non_leader_actions():
     settings = relation_get()
 
     # Check whether we have been requested to stop proxy service
-    stop_proxy_rq = settings.get('stop-proxy-service-rq')
-    if stop_proxy_rq:
-        log("Peer request to stop proxy service received (%s)" %
-            (stop_proxy_rq), level=INFO)
+    rq_token = settings.get('stop-proxy-service-rq')
+    if rq_token:
+        log("Peer request to stop proxy service received (%s)" % (rq_token),
+            level=INFO)
         service_stop('swift-proxy')
-        relation_set(relation_settings={'stop-proxy-service-rsp':
-                                        stop_proxy_rq})
+        rq = SwiftProxyClusterRPC().stop_proxy_ack(rq_token)
+        relation_set(settings=rq)
         return
 
     # Check if there are any builder files we can sync from the leader.
@@ -403,7 +404,7 @@ def ha_relation_joined():
     vip = config('vip')
     if not vip:
         msg = 'Unable to configure hacluster as vip not provided'
-        raise SwiftCharmException(msg)
+        raise SwiftProxyCharmException(msg)
 
     # Obtain resources
     resources = {'res_swift_haproxy': 'lsb:haproxy'}
