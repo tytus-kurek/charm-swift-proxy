@@ -329,9 +329,8 @@ def cluster_leader_actions():
                    (key))
             raise SwiftProxyCharmException(msg)
 
-        peers_only = get_first_available_value(responses, key, default=False)
-        log("Syncing rings and builders (peers-only=%s (%s))" % (peers_only,
-                                                                 type(peers_only)),
+        peers_only = int(get_first_available_value(responses, key, default=0))
+        log("Syncing rings and builders (peers-only=%s)" % (peers_only),
             level=DEBUG)
         broadcast_rings_available(storage=not peers_only)
     else:
