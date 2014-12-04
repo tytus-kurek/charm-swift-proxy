@@ -2,6 +2,7 @@ import os
 import pwd
 import shutil
 import subprocess
+import tempfile
 import uuid
 
 from collections import OrderedDict
@@ -452,18 +453,28 @@ def sync_proxy_rings(broker_url):
     log('Fetching swift rings & builders from proxy @ %s.' % broker_url,
         level=DEBUG)
     target = '/etc/swift'
+    synced = []
+    tmpdir = tempfile.mkdtemp(prefix='swiftrings')
     for server in ['account', 'object', 'container']:
         url = '%s/%s.builder' % (broker_url, server)
         log('Fetching %s.' % url, level=DEBUG)
+        file = "%s.builder" % (server)
         cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
-               "%s/%s.builder" % (target, server)]
+               os.path.join(tmpdir, file)]
         subprocess.check_call(cmd)
+        synced.append(file)
 
         url = '%s/%s.ring.gz' % (broker_url, server)
         log('Fetching %s.' % url, level=DEBUG)
+        file = '%s.ring.gz' % (server)
         cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
-               '%s/%s.ring.gz' % (target, server)]
+               os.path.join(tmpdir, file)]
         subprocess.check_call(cmd)
+        synced.append(file)
+
+    # Once all have been successfully downloaded, move them to actual location.
+    for file in synced:
+        os.rename(os.path.join(tmpdir, file), os.path.join(target, file))
 
 
 def update_www_rings():
@@ -572,7 +583,6 @@ def cluster_sync_rings(peers_only=False):
         broadcast_rings_available(peers=False, storage=not peers_only)
         return
 
-    log("Sending request to stop proxy service to all peers", level=INFO)
     rel_ids = relation_ids('cluster')
     trigger = str(uuid.uuid4())
     if peers_only:
@@ -580,6 +590,8 @@ def cluster_sync_rings(peers_only=False):
     else:
         peers_only = 0
 
+    log("Sending request to stop proxy service to all peers (%s)" % (trigger),
+        level=INFO)
     for rid in rel_ids:
         # NOTE: random data in requests should ensure this gets fired on peer
         relation_set(relation_id=rid,

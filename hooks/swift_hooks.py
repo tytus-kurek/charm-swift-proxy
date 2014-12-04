@@ -302,7 +302,10 @@ def all_peers_stopped(responses):
 
 
 def cluster_leader_actions():
-    """Cluster relation hook actions to be performed by leader units."""
+    """Cluster relation hook actions to be performed by leader units.
+
+    NOTE: must be called by leader from cluster relation hook.
+    """
     # Find out if all peer units have been stopped.
     responses = []
     for rid in relation_ids('cluster'):
@@ -328,13 +331,17 @@ def cluster_leader_actions():
 
 
 def cluster_non_leader_actions():
-    """Cluster relation hook actions to be performed by non-leader units."""
+    """Cluster relation hook actions to be performed by non-leader units.
+
+    NOTE: must be called by non-leader from cluster relation hook.
+    """
     settings = relation_get()
 
     # Check whether we have been requested to stop proxy service
     stop_proxy_rq = settings.get('stop-proxy-service-rq')
     if stop_proxy_rq:
-        log("Peer request to stop proxy service received", level=INFO)
+        log("Peer request to stop proxy service received (%s)" %
+            (stop_proxy_rq), level=INFO)
         service_stop('swift-proxy')
         relation_set(relation_settings={'stop-proxy-service-rsp':
                                         stop_proxy_rq})
