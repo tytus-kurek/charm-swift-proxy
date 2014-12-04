@@ -592,7 +592,7 @@ def cluster_sync_rings(peers_only=False):
     """Notify peer relations that they should stop their proxy services.
 
     Peer units will then be expected to do a relation_set with
-    stop-proxy-service-rsp set rq value. Once all peers have responded, the
+    stop-proxy-service-ack set rq value. Once all peers have responded, the
     leader will send out notification to all relations that rings are available
     for sync.
 

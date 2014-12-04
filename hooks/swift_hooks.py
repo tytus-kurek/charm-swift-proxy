@@ -288,14 +288,14 @@ def all_responses_equal(responses, key, must_exist=True):
 def all_peers_stopped(responses):
     """Establish whether all peers have stopped their proxy services.
 
-    Each peer unit will set stop-proxy-service-rsp to rq value to indicate that
+    Each peer unit will set stop-proxy-service-ack to rq value to indicate that
     it has stopped its proxy service. We wait for all units to be stopped
     before triggering a sync. Peer services will be  restarted once their rings
     are synced with the leader.
 
     To be safe, default expectation is that api is still running.
     """
-    key = 'stop-proxy-service-rsp'
+    key = 'stop-proxy-service-ack'
     if not all_responses_equal(responses, key):
         return False
 
@@ -339,7 +339,7 @@ def cluster_non_leader_actions():
     settings = relation_get()
 
     # Check whether we have been requested to stop proxy service
-    rq_token = settings.get('stop-proxy-service-rq')
+    rq_token = settings.get('stop-proxy-service')
     if rq_token:
         log("Peer request to stop proxy service received (%s)" % (rq_token),
             level=INFO)
