@@ -181,14 +181,16 @@ class SwiftProxyClusterRPC(object):
         rq['peers-only'] = peers_only
         return rq
 
-    def stop_proxy_ack(self, token):
+    def stop_proxy_ack(self, echo_token, echo_peers_only):
         """Ack that peer proxy service is stopped.
 
         NOTE: non-leader action
         """
         rq = self.template()
         rq['trigger'] = str(uuid.uuid4())
-        rq['stop-proxy-service-ack'] = token
+        # These echo values should match those received in the request
+        rq['stop-proxy-service-ack'] = echo_token
+        rq['peers-only'] = echo_peers_only
         return rq
 
     def sync_rings_request(self, broker_host):
