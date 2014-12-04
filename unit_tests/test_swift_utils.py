@@ -89,10 +89,10 @@ class SwiftUtilsTestCase(unittest.TestCase):
     def test_cluster_rpc_stop_proxy_ack(self, mock_uuid):
         mock_uuid.uuid4.return_value = 'token2'
         rpc = swift_utils.SwiftProxyClusterRPC()
-        rq = rpc.stop_proxy_ack('token1')
+        rq = rpc.stop_proxy_ack(echo_token='token1', echo_peers_only='1')
         self.assertEqual({'trigger': 'token2',
                           'builder-broker': None,
-                          'peers-only': None,
+                          'peers-only': '1',
                           'stop-proxy-service': None,
                           'stop-proxy-service-ack': 'token1'}, rq)
 

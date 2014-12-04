@@ -302,6 +302,14 @@ def all_peers_stopped(responses):
     return True
 
 
+def get_first_available_value(responses, key):
+    for r in responses:
+        if key in r:
+            return r['key']
+
+    return None
+
+
 def cluster_leader_actions():
     """Cluster relation hook actions to be performed by leader units.
 
@@ -322,8 +330,8 @@ def cluster_leader_actions():
             raise SwiftProxyCharmException(msg)
 
         log("Syncing rings and builders", level=DEBUG)
-        peers = not responses[0].get(key, False)
-        broadcast_rings_available(peers=peers)
+        peers_only = not get_first_available_value(responses, key)
+        broadcast_rings_available(storage=not peers_only)
     else:
         log("Not all peer apis stopped - skipping sync until all peers ready "
             "(got %s)" % (responses), level=INFO)
@@ -339,12 +347,14 @@ def cluster_non_leader_actions():
     settings = relation_get()
 
     # Check whether we have been requested to stop proxy service
-    rq_token = settings.get('stop-proxy-service')
-    if rq_token:
-        log("Peer request to stop proxy service received (%s)" % (rq_token),
+    token = settings.get('stop-proxy-service', None)
+    if token:
+        log("Peer request to stop proxy service received (%s)" % (token),
             level=INFO)
         service_stop('swift-proxy')
-        rq = SwiftProxyClusterRPC().stop_proxy_ack(rq_token)
+        peers_only = settings.get('peers-only', None)
+        rq = SwiftProxyClusterRPC().stop_proxy_ack(echo_token=token,
+                                                   echo_peers_only=peers_only)
         relation_set(relation_settings=rq)
         return
 
