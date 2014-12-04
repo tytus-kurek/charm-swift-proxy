@@ -35,15 +35,15 @@ class SwiftHooksTestCase(unittest.TestCase):
         responses = [{'some-other-key': token1}]
         self.assertFalse(swift_hooks.all_peers_stopped(responses))
 
-        responses = [{'stop-proxy-service-rsp': token1},
-                     {'stop-proxy-service-rsp': token2}]
+        responses = [{'stop-proxy-service-ack': token1},
+                     {'stop-proxy-service-ack': token2}]
         self.assertFalse(swift_hooks.all_peers_stopped(responses))
 
-        responses = [{'stop-proxy-service-rsp': token1},
-                     {'stop-proxy-service-rsp': token1}]
+        responses = [{'stop-proxy-service-ack': token1},
+                     {'stop-proxy-service-ack': token1}]
         self.assertTrue(swift_hooks.all_peers_stopped(responses))
 
-        responses = [{'stop-proxy-service-rsp': token1},
-                     {'stop-proxy-service-rsp': token1},
+        responses = [{'stop-proxy-service-ack': token1},
+                     {'stop-proxy-service-ack': token1},
                      {'some-other-key': token1}]
         self.assertFalse(swift_hooks.all_peers_stopped(responses))

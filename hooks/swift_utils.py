@@ -1,3 +1,4 @@
+import copy
 import os
 import pwd
 import shutil
@@ -147,32 +148,55 @@ class SwiftProxyCharmException(Exception):
 
 
 class SwiftProxyClusterRPC(object):
+    """Provides cluster relation rpc dicts.
+
+    Crucially, this ensures that any settings we don't use in any given call
+    are set to None, therefore removing them from the relation so they don't
+    get accidentally interpreted by the receiver as part of the request.
+
+    NOTE: these are only intended to be used from cluster peer relations.
+    """
 
     def __init__(self, version=1):
         self._version = version
+
+    def template(self):
         # Everything must be None by default so it gets dropped from the
         # relation unless we want it to be set.
-        self.blanks = {1: {'trigger': None,
-                           'builder-broker': None,
-                           'stop-proxy-service': None,
-                           'stop-proxy-service-ack': None,
-                           'peers-only': None}}
+        templates = {1: {'trigger': None,
+                         'builder-broker': None,
+                         'stop-proxy-service': None,
+                         'stop-proxy-service-ack': None,
+                         'peers-only': None}}
+        return copy.deepcopy(templates[self._version])
 
     def stop_proxy_request(self, peers_only=None):
-        rq = self.blanks[self._version]
+        """Request to stop peer proxy service.
+
+        NOTE: leader action
+        """
+        rq = self.template()
         rq['trigger'] = str(uuid.uuid4())
         rq['stop-proxy-service'] = rq['trigger']
         rq['peers-only'] = peers_only
         return rq
 
     def stop_proxy_ack(self, token):
-        rq = self.blanks[self._version]
+        """Ack that peer proxy service is stopped.
+
+        NOTE: non-leader action
+        """
+        rq = self.template()
         rq['trigger'] = str(uuid.uuid4())
         rq['stop-proxy-service-ack'] = token
         return rq
 
     def sync_rings_request(self, broker_host):
-        rq = self.blanks[self._version]
+        """Request for peer to sync rings.
+
+        NOTE: leader action
+        """
+        rq = self.template()
         rq['trigger'] = str(uuid.uuid4())
         rq['builder-broker'] = broker_host
         return rq
