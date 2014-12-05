@@ -271,15 +271,15 @@ def all_peers_stopped(responses):
 
     To be safe, default expectation is that api is still running.
     """
-    key = 'stop-proxy-service-ack'
-    token = relation_get(attribute='stop-proxy-service-rq',
-                         unit=local_unit())
-    if not token or token != responses[0].get(key):
+    rq_key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC
+    ack_key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK
+    token = relation_get(attribute=rq_key, unit=local_unit())
+    if not token or token != responses[0].get(ack_key):
         log("Unmatched token in ack (expected=%s, got=%s)" %
-            (token, responses[0].get(key)), level=DEBUG)
+            (token, responses[0].get(ack_key)), level=DEBUG)
         return False
 
-    if not all_responses_equal(responses, key):
+    if not all_responses_equal(responses, ack_key):
         return False
 
     return True
@@ -292,7 +292,8 @@ def cluster_leader_actions():
     """
     # If we have received an ack, check other units
     settings = relation_get()
-    if settings and 'stop-proxy-service-ack' in settings:
+    ack_key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK
+    if settings and ack_key in settings:
         # Find out if all peer units have been stopped.
         responses = []
         for rid in relation_ids('cluster'):
@@ -333,7 +334,8 @@ def cluster_non_leader_actions():
     settings = relation_get()
 
     # Check whether we have been requested to stop proxy service
-    token = settings.get('stop-proxy-service', None)
+    rq_key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC
+    token = settings.get(rq_key, None)
     if token:
         log("Peer request to stop proxy service received (%s)" % (token),
             level=INFO)

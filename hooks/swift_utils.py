@@ -157,6 +157,9 @@ class SwiftProxyClusterRPC(object):
     NOTE: these are only intended to be used from cluster peer relations.
     """
 
+    KEY_STOP_PROXY_SVC = 'stop-proxy-service'
+    KEY_STOP_PROXY_SVC_ACK = 'stop-proxy-service-ack'
+
     def __init__(self, version=1):
         self._version = version
 
@@ -165,8 +168,8 @@ class SwiftProxyClusterRPC(object):
         # relation unless we want it to be set.
         templates = {1: {'trigger': None,
                          'builder-broker': None,
-                         'stop-proxy-service': None,
-                         'stop-proxy-service-ack': None,
+                         self.KEY_STOP_PROXY_SVC: None,
+                         self.KEY_STOP_PROXY_SVC_ACK: None,
                          'peers-only': None}}
         return copy.deepcopy(templates[self._version])
 
@@ -177,7 +180,7 @@ class SwiftProxyClusterRPC(object):
         """
         rq = self.template()
         rq['trigger'] = str(uuid.uuid4())
-        rq['stop-proxy-service'] = rq['trigger']
+        rq[self.KEY_STOP_PROXY_SVC] = rq['trigger']
         rq['peers-only'] = peers_only
         return rq
 
@@ -189,7 +192,7 @@ class SwiftProxyClusterRPC(object):
         rq = self.template()
         rq['trigger'] = str(uuid.uuid4())
         # These echo values should match those received in the request
-        rq['stop-proxy-service-ack'] = echo_token
+        rq[self.KEY_STOP_PROXY_SVC_ACK] = echo_token
         rq['peers-only'] = echo_peers_only
         return rq
 
