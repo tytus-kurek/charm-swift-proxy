@@ -193,13 +193,18 @@ class SwiftProxyClusterRPC(object):
         rq['peers-only'] = echo_peers_only
         return rq
 
-    def sync_rings_request(self, broker_host):
+    def sync_rings_request(self, broker_host, use_trigger=True):
         """Request for peer to sync rings.
 
         NOTE: leader action
         """
         rq = self.template()
-        rq['trigger'] = str(uuid.uuid4())
+        # There may be cases where we don't want to use the trigger e.g. when
+        # we are re-issuing a request that may already have been received but
+        # we don't want the receiver hook to re-fire.
+        if use_trigger:
+            rq['trigger'] = str(uuid.uuid4())
+
         rq['builder-broker'] = broker_host
         return rq
 
@@ -610,8 +615,8 @@ def mark_www_rings_deleted():
             os.rename(path, "%s.deleted" % (path))
 
 
-def notify_peers_builders_available():
-    """Notify peer swift-proxy peer units that they should synchronise ring and
+def notify_peers_builders_available(use_trigger=True):
+    """Notify peer swift-proxy units that they should synchronise ring and
     builder files.
 
     Note that this should only be called from the leader unit.
@@ -629,13 +634,14 @@ def notify_peers_builders_available():
     hostname = format_ipv6_addr(hostname) or hostname
     # Notify peers that builders are available
     log("Notifying peer(s) that rings are ready for sync.", level=INFO)
-    rq = SwiftProxyClusterRPC().sync_rings_request(hostname)
+    rq = SwiftProxyClusterRPC().sync_rings_request(hostname,
+                                                   use_trigger=use_trigger)
     for rid in relation_ids('cluster'):
         log("Notifying rid=%s" % (rid), level=DEBUG)
         relation_set(relation_id=rid, relation_settings=rq)
 
 
-def broadcast_rings_available(peers=True, storage=True):
+def broadcast_rings_available(peers=True, storage=True, use_trigger=True):
     if storage:
         # TODO: get ack from storage units that they are synced before
         # syncing proxies.
@@ -644,7 +650,7 @@ def broadcast_rings_available(peers=True, storage=True):
         log("Skipping notify storage relations")
 
     if peers:
-        notify_peers_builders_available()
+        notify_peers_builders_available(use_trigger=use_trigger)
     else:
         log("Skipping notify peer relations")
 

@@ -282,27 +282,37 @@ def cluster_leader_actions():
 
     NOTE: must be called by leader from cluster relation hook.
     """
-    # Find out if all peer units have been stopped.
-    responses = []
-    for rid in relation_ids('cluster'):
-        for unit in related_units(rid):
-            responses.append(relation_get(rid=rid, unit=unit))
+    # If we have received an ack, check other units
+    settings = relation_get()
+    if settings and 'stop-proxy-service-ack' in settings:
+        # Find out if all peer units have been stopped.
+        responses = []
+        for rid in relation_ids('cluster'):
+            for unit in related_units(rid):
+                responses.append(relation_get(rid=rid, unit=unit))
 
-    # Ensure all peers stopped before starting sync
-    if all_peers_stopped(responses):
-        key = 'peers-only'
-        if not all_responses_equal(responses, key, must_exist=False):
-            msg = ("Did not get equal response from every peer unit for '%s'" %
-                   (key))
-            raise SwiftProxyCharmException(msg)
+        # Ensure all peers stopped before starting sync
+        if all_peers_stopped(responses):
+            key = 'peers-only'
+            if not all_responses_equal(responses, key, must_exist=False):
+                msg = ("Did not get equal response from every peer unit for "
+                       "'%s'" % (key))
+                raise SwiftProxyCharmException(msg)
 
-        peers_only = int(get_first_available_value(responses, key, default=0))
-        log("Syncing rings and builders (peers-only=%s)" % (peers_only),
-            level=DEBUG)
-        broadcast_rings_available(storage=not peers_only)
+            peers_only = int(get_first_available_value(responses, key,
+                                                       default=0))
+            log("Syncing rings and builders (peers-only=%s)" % (peers_only),
+                level=DEBUG)
+            broadcast_rings_available(storage=not peers_only)
+        else:
+            log("Not all peer apis stopped - skipping sync until all peers "
+                "ready (got %s)" % (responses), level=INFO)
     else:
-        log("Not all peer apis stopped - skipping sync until all peers ready "
-            "(got %s)" % (responses), level=INFO)
+        # Otherwise it might be a new swift-proxy unit so tell it to sync
+        # rings. Note that broker info may already be present in the cluster
+        # relation so don't use a trigger otherwise the hook will re-fire on
+        # all peers.
+        broadcast_rings_available(storage=False, use_trigger=False)
 
     CONFIGS.write_all()
 
