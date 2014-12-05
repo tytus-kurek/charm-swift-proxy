@@ -41,6 +41,7 @@ from charmhelpers.contrib.hahelpers.cluster import (
 )
 from charmhelpers.core.hookenv import (
     config,
+    local_unit,
     unit_get,
     relation_set,
     relation_ids,
@@ -271,6 +272,13 @@ def all_peers_stopped(responses):
     To be safe, default expectation is that api is still running.
     """
     key = 'stop-proxy-service-ack'
+    token = relation_get(attribute='stop-proxy-service-rq',
+                         unit=local_unit())
+    if not token or token != responses[0].get(key):
+        log("Unmatched token in ack (expected=%s, got=%s)" %
+            (token, responses[0].get(key)), level=DEBUG)
+        return False
+
     if not all_responses_equal(responses, key):
         return False
 
