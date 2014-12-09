@@ -1,4 +1,5 @@
 import copy
+import glob
 import hashlib
 import os
 import pwd
@@ -58,6 +59,7 @@ from charmhelpers.contrib.network.ip import (
 
 # Various config files that are managed via templating.
 SWIFT_CONF_DIR = '/etc/swift'
+SWIFT_RING_EXT = 'ring.gz'
 SWIFT_CONF = os.path.join(SWIFT_CONF_DIR, 'swift.conf')
 SWIFT_PROXY_CONF = os.path.join(SWIFT_CONF_DIR, 'proxy-server.conf')
 SWIFT_CONF_DIR = os.path.dirname(SWIFT_CONF)
@@ -584,9 +586,9 @@ def sync_proxy_rings(broker_url):
         subprocess.check_call(cmd)
         synced.append(builder)
 
-        url = '%s/%s.ring.gz' % (broker_url, server)
+        url = '%s/%s.%s' % (broker_url, server, SWIFT_RING_EXT)
         log('Fetching %s.' % url, level=DEBUG)
-        ring = '%s.ring.gz' % (server)
+        ring = '%s.%s' % (server, SWIFT_RING_EXT)
         cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
                os.path.join(tmpdir, ring)]
         subprocess.check_call(cmd)
@@ -601,7 +603,7 @@ def update_www_rings():
     """Copy rings to apache www dir."""
     www_dir = get_www_dir()
     for ring, builder_path in SWIFT_RINGS.iteritems():
-        ringfile = '%s.ring.gz' % ring
+        ringfile = '%s.%s' % (ring, SWIFT_RING_EXT)
         shutil.copyfile(os.path.join(SWIFT_CONF_DIR, ringfile),
                         os.path.join(www_dir, ringfile))
         shutil.copyfile(builder_path,
@@ -612,7 +614,7 @@ def get_rings_checksum():
     """Returns sha256 checksum for rings in /etc/swift."""
     hash = hashlib.sha256()
     for ring in SWIFT_RINGS.iterkeys():
-        path = os.path.join(SWIFT_CONF_DIR, '%s.ring.gz' % ring)
+        path = os.path.join(SWIFT_CONF_DIR, '%s.%s' % (ring, SWIFT_RING_EXT))
         if not os.path.isfile(path):
             continue
 
@@ -655,10 +657,14 @@ def sync_builders_and_rings_if_changed(f):
         rings_changed = rings_after != rings_before
         builders_changed = builders_after != builders_before
         if rings_changed or builders_changed:
-            # Copy to www dir
-            update_www_rings()
-            # Trigger sync
-            cluster_sync_rings(peers_only=not rings_changed)
+            path = os.path.join(SWIFT_CONF_DIR, '*.%s' % (SWIFT_RING_EXT))
+            if len(glob.glob(path)) == len(SWIFT_RINGS):
+                # Copy to www dir
+                update_www_rings()
+                # Trigger sync
+                cluster_sync_rings(peers_only=not rings_changed)
+            else:
+                log("Rings not ready for sync - skipping", level=DEBUG)
         else:
             log("Rings/builders unchanged so skipping sync", level=DEBUG)
 
