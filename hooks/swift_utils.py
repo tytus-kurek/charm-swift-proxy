@@ -881,17 +881,21 @@ def notify_storage_rings_available():
 def fully_synced():
     """Check that we have all the rings and builders synced from the leader.
 
-    Returns True if we have all ring builders.
+    Returns True if we have all rings and builders.
     """
+    not_synced = []
     for ring, builder in SWIFT_RINGS.iteritems():
-        ringfile = '%s.%s' % (ring, SWIFT_RING_EXT)
         if not os.path.exists(builder):
-            log("Builder not yet synced - %s" % (builder), level=DEBUG)
-            return False
+            not_synced.append(builder)
 
+        ringfile = os.path.join(SWIFT_CONF_DIR,
+                                '%s.%s' % (ring, SWIFT_RING_EXT))
         if not os.path.exists(ringfile):
-            log("Ring not yet synced - %s" % (ringfile), level=DEBUG)
-            return False
+            not_synced.append(ringfile)
+
+    if not_synced:
+        log("Not yet synced: %s" % ', '.join(not_synced), level=INFO)
+        return False
 
     return True
 
