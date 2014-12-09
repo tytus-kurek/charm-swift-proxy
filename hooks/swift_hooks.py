@@ -133,7 +133,7 @@ def config_changed():
 
     update_min_part_hours()
 
-    if not config('disable-ring-balance'):
+    if not config('disable-ring-balance') and is_elected_leader(SWIFT_HA_RES):
         # Try ring balance. If rings are balanced, no sync will occur.
         balance_rings()
 
