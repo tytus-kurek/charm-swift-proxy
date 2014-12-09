@@ -33,12 +33,20 @@ options:
     default: 0
     type: int
     description: |
-        This is the Swift ring builder min_part_hours parameter. This
-        setting represents the amount of time in hours that Swift will wait
-        between subsequent ring rebalances in order to avoid large IO loads as
-        data is rebalanced when new devices are added to the cluster. Once your
-        cluster has been built, you can set this to a higher value e.g. 1
-        (upstream default). 
+      This is the Swift ring builder min_part_hours parameter. This
+      setting represents the amount of time in hours that Swift will wait
+      between subsequent ring re-balances in order to avoid large i/o loads as
+      data is re-balanced when new devices are added to the cluster. Once your
+      cluster has been built, you can set this to a higher value e.g. 1
+      (upstream default). Note that changing this value will result in an
+      attempt to re-balance and if successful, rings will be redistributed.
+  disable-ring-balance:
+    type: boolean
+    default: False
+    description: |
+      This provides similar support to min-hours but without having to modify
+      the builders. If True, any changes to the builders will not result in a
+      ring re-balance and sync until this value is set back to False.
   zone-assignment:
     default: "manual"
     type: string
@@ -52,14 +60,6 @@ options:
       zones before the storage ring will be initially balance.  Deployment
       requirements differ based on the zone-assignment policy configured, see
       this charm's README for details.
-  force-cluster-ring-sync:
-      default: False
-      type: boolean
-      description: |
-          There are some cases where one might want to resync rings and
-          builders across storage relations perhaps as a result of a manual
-          ring (e.g. rebalance) update so this toggle can be used to trigger a
-          resync across the entire cluster.
   # User provided SSL cert and key
   ssl_cert:
     type: string
@@ -85,7 +85,8 @@ options:
   workers:
     default: 0
     type: int
-    description: Number of TCP workers to launch (0 for the number of system cores)
+    description: |
+      Number of TCP workers to launch (0 for the number of system cores).
   operator-roles:
     default: "Member,Admin"
     type: string
@@ -101,7 +102,9 @@ options:
   node-timeout:
     default: 60
     type: int
-    description: How long the proxy server will wait on responses from the a/c/o servers.
+    description: |
+      How long the proxy server will wait on responses from the
+      account/container/object servers.
   recoverable-node-timeout:
     default: 30
     type: int

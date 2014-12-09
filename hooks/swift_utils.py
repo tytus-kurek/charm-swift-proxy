@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import os
 import pwd
 import shutil
@@ -56,8 +57,9 @@ from charmhelpers.contrib.network.ip import (
 
 
 # Various config files that are managed via templating.
-SWIFT_CONF = '/etc/swift/swift.conf'
-SWIFT_PROXY_CONF = '/etc/swift/proxy-server.conf'
+SWIFT_CONF_DIR = '/etc/swift'
+SWIFT_CONF = os.path.join(SWIFT_CONF_DIR, 'swift.conf')
+SWIFT_PROXY_CONF = os.path.join(SWIFT_CONF_DIR, 'proxy-server.conf')
 SWIFT_CONF_DIR = os.path.dirname(SWIFT_CONF)
 MEMCACHED_CONF = '/etc/memcached.conf'
 SWIFT_RINGS_CONF = '/etc/apache2/conf.d/swift-rings'
@@ -81,13 +83,13 @@ def get_www_dir():
 
 
 SWIFT_RINGS = {
-    'account': '/etc/swift/account.builder',
-    'container': '/etc/swift/container.builder',
-    'object': '/etc/swift/object.builder'
+    'account': os.path.join(SWIFT_CONF_DIR, 'account.builder'),
+    'container': os.path.join(SWIFT_CONF_DIR, 'container.builder'),
+    'object': os.path.join(SWIFT_CONF_DIR, 'object.builder')
 }
 
-SSL_CERT = '/etc/swift/cert.crt'
-SSL_KEY = '/etc/swift/cert.key'
+SSL_CERT = os.path.join(SWIFT_CONF_DIR, 'cert.crt')
+SSL_KEY = os.path.join(SWIFT_CONF_DIR, 'cert.key')
 
 # Essex packages
 BASE_PACKAGES = [
@@ -469,7 +471,10 @@ def get_zone(assignment_policy):
 
 
 def balance_ring(ring_path):
-    """Balance a ring.  return True if it needs redistribution."""
+    """Balance a ring.
+
+    Returns True if it needs redistribution.
+    """
     # shell out to swift-ring-builder instead, since the balancing code there
     # does a bunch of un-importable validation.'''
     cmd = ['swift-ring-builder', ring_path, 'rebalance']
@@ -478,7 +483,8 @@ def balance_ring(ring_path):
     rc = p.returncode
     if rc == 0:
         return True
-    elif rc == 1:
+
+    if rc == 1:
         # Ring builder exit-code=1 is supposed to indicate warning but I have
         # noticed that it can also return 1 with the following sort of message:
         #
@@ -488,23 +494,31 @@ def balance_ring(ring_path):
         # This indicates that a balance has occurred and a resync would be
         # required so not sure why 1 is returned in this case.
         return False
-    else:
-        msg = ('balance_ring: %s returned %s' % (cmd, rc))
-        raise SwiftProxyCharmException(msg)
+
+    msg = ('balance_ring: %s returned %s' % (cmd, rc))
+    raise SwiftProxyCharmException(msg)
 
 
 def should_balance(rings):
-    """Based on zones vs min. replicas, determine whether or not the rings
-    should be balanced during initial configuration.
+    """Determine whether or not a re-balance is required and allowed.
+
+    Ring balance can be disabled/postponed using the disable-ring-balance
+    config option.
+
+    Otherwise, using zones vs min. replicas, determine whether or not the rings
+    should be balanced.
     """
+    if config('disable-ring-balance'):
+        return False
+
     for ring in rings:
         builder = _load_builder(ring).to_dict()
         replicas = builder['replicas']
         zones = [dev['zone'] for dev in builder['devs']]
         num_zones = len(set(zones))
         if num_zones < replicas:
-            log("Not enough zones (%d) defined to allow rebalance "
-                "(need >= %d)" % (num_zones, replicas), level=DEBUG)
+            log("Not enough zones (%d) defined to allow ring balance "
+                "(need >= %d)" % (num_zones, replicas), level=INFO)
             return False
 
     return True
@@ -527,6 +541,11 @@ def do_openstack_upgrade(configs):
 
 
 def setup_ipv6():
+    """Validate that we can support IPv6 mode.
+
+    This should be called if prefer-ipv6 is True to ensure that we are running
+    in an environment that supports ipv6.
+    """
     ubuntu_rel = lsb_release()['DISTRIB_CODENAME'].lower()
     if ubuntu_rel < "trusty":
         msg = ("IPv6 is not supported in the charms for Ubuntu versions less "
@@ -553,7 +572,7 @@ def sync_proxy_rings(broker_url):
     """
     log('Fetching swift rings & builders from proxy @ %s.' % broker_url,
         level=DEBUG)
-    target = '/etc/swift'
+    target = SWIFT_CONF_DIR
     synced = []
     tmpdir = tempfile.mkdtemp(prefix='swiftrings')
     for server in ['account', 'object', 'container']:
@@ -589,10 +608,91 @@ def update_www_rings():
                         os.path.join(www_dir, os.path.basename(builder_path)))
 
 
+def get_rings_checksum():
+    """Returns sha256 checksum for rings in /etc/swift."""
+    hash = hashlib.sha256()
+    for ring in SWIFT_RINGS.iterkeys():
+        path = os.path.join(SWIFT_CONF_DIR, '%s.ring.gz' % ring)
+        if not os.path.isfile(path):
+            continue
+
+        with open(path, 'rb') as fd:
+            hash.update(fd.read())
+
+    return hash.hexdigest()
+
+
+def get_builders_checksum():
+    """Returns sha256 checksum for builders in /etc/swift."""
+    hash = hashlib.sha256()
+    for builder in SWIFT_RINGS.itervalues():
+        if not os.path.exists(builder):
+            continue
+
+        with open(builder, 'rb') as fd:
+            hash.update(fd.read())
+
+    return hash.hexdigest()
+
+
+def sync_builders_and_rings_if_changed(f):
+    """Only trigger a ring or builder sync if they have changed as a result of
+    the decorated operation.
+    """
+    def _inner_sync_builders_and_rings_if_changed(*args, **kwargs):
+        if not is_elected_leader(SWIFT_HA_RES):
+            log("Sync rings called by non-leader - skipping", level=WARNING)
+            return
+
+        rings_before = get_rings_checksum()
+        builders_before = get_builders_checksum()
+
+        ret = f(*args, **kwargs)
+
+        rings_after = get_rings_checksum()
+        builders_after = get_builders_checksum()
+
+        rings_changed = rings_after != rings_before
+        builders_changed = builders_after != builders_before
+        if rings_changed or builders_changed:
+            # Copy to www dir
+            update_www_rings()
+            # Trigger sync
+            cluster_sync_rings(peers_only=not rings_changed)
+        else:
+            log("Rings/builders unchanged so skipping sync", level=DEBUG)
+
+        return ret
+
+    return _inner_sync_builders_and_rings_if_changed
+
+
+@sync_builders_and_rings_if_changed
+def update_rings(node_settings=None):
+    """Update builder with node settings and balance rings if necessary."""
+    if not is_elected_leader(SWIFT_HA_RES):
+        log("Update rings called by non-leader - skipping", level=WARNING)
+        return
+
+    if node_settings:
+        if 'device' in node_settings:
+            for ring in SWIFT_RINGS.itervalues():
+                if not exists_in_ring(ring, node_settings):
+                    add_to_ring(ring, node_settings)
+
+    balance_rings()
+
+
+@sync_builders_and_rings_if_changed
 def balance_rings():
     """Rebalance each ring and notify peers that new rings are available."""
     if not is_elected_leader(SWIFT_HA_RES):
         log("Balance rings called by non-leader - skipping", level=WARNING)
+        return
+
+    if not should_balance([r for r in SWIFT_RINGS.itervalues()]):
+        log("Not yet ready to balance rings - insufficient replicas?",
+            level=INFO)
         return
 
     rebalanced = False
@@ -604,7 +704,8 @@ def balance_rings():
             log('Ring %s not rebalanced' % path, level=DEBUG)
 
     if not rebalanced:
-        log("Rings unchanged by rebalance", level=INFO)
+        log("Rings unchanged by rebalance", level=DEBUG)
+        # NOTE: checksum will tell for sure
 
 
 def mark_www_rings_deleted():
@@ -777,5 +878,4 @@ def update_min_part_hours():
                     resync_builders = True
 
     if resync_builders:
-        update_www_rings()
-        cluster_sync_rings(peers_only=True)
+        balance_rings()
