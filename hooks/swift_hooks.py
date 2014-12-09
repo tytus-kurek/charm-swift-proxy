@@ -229,7 +229,7 @@ def storage_changed():
     # Update and balance rings.
     devs = relation_get('device')
     if devs:
-        node_settings['devs'] = devs.split(':')
+        node_settings['device'] = devs.split(':')
 
     update_rings(node_settings)
     # Restart proxy here in case no config changes made (so
