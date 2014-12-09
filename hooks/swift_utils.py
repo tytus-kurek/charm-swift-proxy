@@ -606,24 +606,21 @@ def update_www_rings():
     syncing rings.
     """
     tmp_dir = tempfile.mkdtemp(prefix='swift-rings-www-tmp')
-    try:
-        for ring, builder_path in SWIFT_RINGS.iteritems():
-            ringfile = '%s.%s' % (ring, SWIFT_RING_EXT)
-            src = os.path.join(SWIFT_CONF_DIR, ringfile)
-            dst = os.path.join(tmp_dir, ringfile)
-            shutil.copyfile(src, dst)
+    for ring, builder_path in SWIFT_RINGS.iteritems():
+        ringfile = '%s.%s' % (ring, SWIFT_RING_EXT)
+        src = os.path.join(SWIFT_CONF_DIR, ringfile)
+        dst = os.path.join(tmp_dir, ringfile)
+        shutil.copyfile(src, dst)
 
-            src = builder_path
-            dst = os.path.join(tmp_dir, os.path.basename(builder_path))
-            shutil.copyfile(src, dst)
+        src = builder_path
+        dst = os.path.join(tmp_dir, os.path.basename(builder_path))
+        shutil.copyfile(src, dst)
 
-        www_dir = get_www_dir()
-        deleted = "%s.deleted" % (www_dir)
-        os.rename(www_dir, deleted)
-        os.rename(tmp_dir, www_dir)
-        shutil.rmtree(deleted)
-    finally:
-        shutil.rmtree(tmp_dir)
+    www_dir = get_www_dir()
+    deleted = "%s.deleted" % (www_dir)
+    os.rename(www_dir, deleted)
+    os.rename(tmp_dir, www_dir)
+    shutil.rmtree(deleted)
 
 
 def get_rings_checksum():
