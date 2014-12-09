@@ -19,7 +19,7 @@ from swift_utils import (
     setup_ipv6,
     update_rings,
     balance_rings,
-    builders_synced,
+    fully_synced,
     sync_proxy_rings,
     update_min_part_hours,
     broadcast_rings_available,
@@ -331,8 +331,8 @@ def cluster_non_leader_actions():
     rq_key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC
     token = settings.get(rq_key, None)
     if token:
-        log("Peer request to stop proxy service received (%s)" % (token),
-            level=INFO)
+        log("Peer request to stop proxy service received (%s) - sending ack" %
+            (token), level=INFO)
         service_stop('swift-proxy')
         peers_only = settings.get('peers-only', None)
         rq = SwiftProxyClusterRPC().stop_proxy_ack(echo_token=token,
@@ -347,22 +347,24 @@ def cluster_non_leader_actions():
         log("No update available", level=DEBUG)
         return
 
+    builders_only = int(settings.get('sync-only-builders', 0))
     path = os.path.basename(get_www_dir())
     try:
-        sync_proxy_rings('http://%s/%s' % (broker, path))
+        sync_proxy_rings('http://%s/%s' % (broker, path),
+                         rings=not builders_only)
     except subprocess.CalledProcessError:
         log("Ring builder sync failed, builders not yet available - "
             "leader not ready?", level=WARNING)
         return None
 
-    # Re-enable the proxy once all builders are synced
-    if builders_synced():
+    # Re-enable the proxy once all builders and rings are synced
+    if fully_synced():
         log("Ring builders synced - starting proxy", level=INFO)
         CONFIGS.write_all()
         service_start('swift-proxy')
     else:
-        log("Not all builders synced yet - waiting for peer sync before "
-            "starting proxy", level=INFO)
+        log("Not all builders and rings synced yet - waiting for peer sync "
+            "before starting proxy", level=INFO)
 
 
 @hooks.hook('cluster-relation-changed',
