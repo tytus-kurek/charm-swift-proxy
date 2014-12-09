@@ -599,6 +599,16 @@ def sync_proxy_rings(broker_url):
         os.rename(os.path.join(tmpdir, f), os.path.join(target, f))
 
 
+def ensure_www_dir_permissions(www_dir):
+    if not os.path.isdir(www_dir):
+        os.mkdir(www_dir, 0o755)
+    else:
+        os.chmod(www_dir, 0o755)
+
+    uid, gid = swift_user()
+    os.chown(www_dir, uid, gid)
+
+
 def update_www_rings():
     """Copy rings to apache www dir.
 
@@ -618,6 +628,7 @@ def update_www_rings():
 
     www_dir = get_www_dir()
     deleted = "%s.deleted" % (www_dir)
+    ensure_www_dir_permissions(tmp_dir)
     os.rename(www_dir, deleted)
     os.rename(tmp_dir, www_dir)
     shutil.rmtree(deleted)

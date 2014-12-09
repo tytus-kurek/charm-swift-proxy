@@ -13,7 +13,6 @@ from swift_utils import (
     SWIFT_RINGS,
     get_www_dir,
     initialize_ring,
-    swift_user,
     SWIFT_HA_RES,
     get_zone,
     do_openstack_upgrade,
@@ -28,6 +27,7 @@ from swift_utils import (
     SwiftProxyClusterRPC,
     get_first_available_value,
     all_responses_equal,
+    ensure_www_dir_permissions,
 )
 
 import charmhelpers.contrib.openstack.utils as openstack
@@ -110,12 +110,7 @@ def install():
                             config('min-hours'))
 
     # configure a directory on webserver for distributing rings.
-    www_dir = get_www_dir()
-    if not os.path.isdir(www_dir):
-        os.mkdir(www_dir, 0o755)
-
-    uid, gid = swift_user()
-    os.chown(www_dir, uid, gid)
+    ensure_www_dir_permissions(get_www_dir())
 
 
 @hooks.hook('config-changed')
