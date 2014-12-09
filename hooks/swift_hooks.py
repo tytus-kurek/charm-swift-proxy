@@ -16,19 +16,15 @@ from swift_utils import (
     swift_user,
     SWIFT_HA_RES,
     get_zone,
-    exists_in_ring,
-    add_to_ring,
-    should_balance,
     do_openstack_upgrade,
     setup_ipv6,
+    update_rings,
     balance_rings,
     builders_synced,
     sync_proxy_rings,
     update_min_part_hours,
     broadcast_rings_available,
     mark_www_rings_deleted,
-    cluster_sync_rings,
-    update_www_rings,
     SwiftProxyClusterRPC,
     get_first_available_value,
     all_responses_equal,
@@ -77,6 +73,7 @@ from charmhelpers.contrib.network.ip import (
     get_address_in_network,
     get_ipv6_addr,
     is_ipv6,
+    format_ipv6_addr,
 )
 from charmhelpers.contrib.openstack.context import ADDRESS_TYPES
 
@@ -136,9 +133,9 @@ def config_changed():
 
     update_min_part_hours()
 
-    if config('force-cluster-ring-sync'):
-        log("Disabling peer proxy apis and syncing rings across cluster.")
-        cluster_sync_rings()
+    if not config('disable-ring-balance'):
+        # Try ring balance. If rings are balanced, no sync will occur.
+        balance_rings()
 
     for r_id in relation_ids('identity-service'):
         keystone_joined(relid=r_id)
@@ -187,16 +184,26 @@ def storage_joined():
 @hooks.hook('swift-storage-relation-changed')
 @restart_on_change(restart_map())
 def storage_changed():
+    """Storage relation.
+
+    Only the leader unit can update and distribute rings so if we are not the
+    leader we ignore this event and wait for a resync request from the leader.
+    """
     if not is_elected_leader(SWIFT_HA_RES):
         log("Not the leader - ignoring storage relation until leader ready.",
             level=DEBUG)
         return
 
     log("Leader established, updating ring builders", level=INFO)
+    addr = relation_get('private-address')
     if config('prefer-ipv6'):
-        host_ip = '[%s]' % relation_get('private-address')
+        host_ip = format_ipv6_addr(addr)
+        if not host_ip:
+            errmsg = ("Did not get IPv6 address from storage relation "
+                      "(got=%s)" % (addr))
+            raise SwiftProxyCharmException(errmsg)
     else:
-        host_ip = openstack.get_host_ip(relation_get('private-address'))
+        host_ip = openstack.get_host_ip(addr)
 
     zone = get_zone(config('zone-assignment'))
     node_settings = {
@@ -219,23 +226,11 @@ def storage_changed():
     CONFIGS.write_all()
 
     # Allow for multiple devs per unit, passed along as a : separated list
-    devs = relation_get('device').split(':')
-    for dev in devs:
-        node_settings['device'] = dev
-        for ring in SWIFT_RINGS.itervalues():
-            if not exists_in_ring(ring, node_settings):
-                add_to_ring(ring, node_settings)
-
-    if should_balance([r for r in SWIFT_RINGS.itervalues()]):
-        balance_rings()
-        update_www_rings()
-        cluster_sync_rings()
-        # Restart proxy here in case no config changes made (so
-        # restart_on_change() ineffective).
-        service_restart('swift-proxy')
-    else:
-        log("Not yet ready to balance rings - insufficient replicas?",
-            level=INFO)
+    # Update and balance rings.
+    update_rings(devs=relation_get('device').split(':'))
+    # Restart proxy here in case no config changes made (so
+    # restart_on_change() ineffective).
+    service_restart('swift-proxy')
 
 
 @hooks.hook('swift-storage-relation-broken')

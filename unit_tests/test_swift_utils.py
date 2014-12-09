@@ -1,6 +1,8 @@
 import mock
+import os
 import shutil
 import tempfile
+import uuid
 import unittest
 
 
@@ -8,26 +10,36 @@ with mock.patch('charmhelpers.core.hookenv.config'):
     import swift_utils
 
 
+def init_ring_paths(tmpdir):
+    swift_utils.SWIFT_CONF_DIR = tmpdir
+    for ring in swift_utils.SWIFT_RINGS.iterkeys():
+        path = os.path.join(tmpdir, "%s.builder" % ring)
+        swift_utils.SWIFT_RINGS[ring] = path
+        with open(path, 'w') as fd:
+            fd.write("0\n")
+
+
 class SwiftUtilsTestCase(unittest.TestCase):
 
+    @mock.patch('swift_utils.sync_builders_and_rings_if_changed')
+    @mock.patch('swift_utils.balance_rings')
     @mock.patch('swift_utils.log')
     @mock.patch('swift_utils.os.path.exists')
     @mock.patch('swift_utils.is_elected_leader')
     @mock.patch('swift_utils.config')
     @mock.patch('swift_utils.get_min_part_hours')
     @mock.patch('swift_utils.set_min_part_hours')
-    @mock.patch('swift_utils.update_www_rings')
-    @mock.patch('swift_utils.cluster_sync_rings')
-    def test_update_min_part_hours(self, mock_cluster_sync_rings,
-                                   mock_update_www_rings,
-                                   mock_set_min_hours, mock_get_min_hours,
-                                   mock_config, mock_is_elected_leader,
-                                   mock_path_exists, mock_log):
+    def test_update_min_part_hours(self, mock_set_min_hours,
+                                   mock_get_min_hours, mock_config,
+                                   mock_is_elected_leader, mock_path_exists,
+                                   mock_log, mock_balance_rings,
+                                   mock_sync_builders_and_rings_if_changed):
 
         # Test blocker 1
         mock_is_elected_leader.return_value = False
         swift_utils.update_min_part_hours()
         self.assertFalse(mock_config.called)
+        self.assertFalse(mock_balance_rings.called)
 
         # Test blocker 2
         mock_path_exists.return_value = False
@@ -35,6 +47,7 @@ class SwiftUtilsTestCase(unittest.TestCase):
         swift_utils.update_min_part_hours()
         self.assertTrue(mock_config.called)
         self.assertFalse(mock_get_min_hours.called)
+        self.assertFalse(mock_balance_rings.called)
 
         # Test blocker 3
         mock_path_exists.return_value = True
@@ -42,19 +55,53 @@ class SwiftUtilsTestCase(unittest.TestCase):
         mock_config.return_value = 10
         mock_get_min_hours.return_value = 10
         swift_utils.update_min_part_hours()
-        self.assertTrue(mock_config.called)
         self.assertTrue(mock_get_min_hours.called)
         self.assertFalse(mock_set_min_hours.called)
+        self.assertFalse(mock_balance_rings.called)
 
         # Test go through
         mock_path_exists.return_value = True
         mock_is_elected_leader.return_value = True
         mock_config.return_value = 10
-        mock_get_min_hours.return_value = 11
+        mock_get_min_hours.return_value = 0
         swift_utils.update_min_part_hours()
         self.assertTrue(mock_config.called)
         self.assertTrue(mock_get_min_hours.called)
         self.assertTrue(mock_set_min_hours.called)
+        self.assertTrue(mock_balance_rings.called)
+
+    @mock.patch('swift_utils.balance_rings')
+    @mock.patch('swift_utils.log')
+    @mock.patch('swift_utils.is_elected_leader')
+    @mock.patch('swift_utils.config')
+    @mock.patch('swift_utils.update_www_rings')
+    @mock.patch('swift_utils.cluster_sync_rings')
+    def test_sync_builders_and_rings_if_changed(self, mock_cluster_sync_rings,
+                                                mock_update_www_rings,
+                                                mock_config,
+                                                mock_is_elected_leader,
+                                                mock_log,
+                                                mock_balance_rings):
+
+        @swift_utils.sync_builders_and_rings_if_changed
+        def mock_balance():
+            for ring, builder in swift_utils.SWIFT_RINGS.iteritems():
+                ring = os.path.join(swift_utils.SWIFT_CONF_DIR,
+                                    '%s.ring.gz' % ring)
+                with open(ring, 'w') as fd:
+                    fd.write(str(uuid.uuid4()))
+
+                with open(builder, 'w') as fd:
+                    fd.write(str(uuid.uuid4()))
+
+        mock_balance_rings.side_effect = mock_balance
+
+        init_ring_paths(tempfile.mkdtemp())
+        try:
+            swift_utils.balance_rings()
+        finally:
+            shutil.rmtree(swift_utils.SWIFT_CONF_DIR)
+
         self.assertTrue(mock_update_www_rings.called)
         self.assertTrue(mock_cluster_sync_rings.called)
 
