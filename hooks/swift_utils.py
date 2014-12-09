@@ -703,9 +703,10 @@ def sync_builders_and_rings_if_changed(f):
                 # Trigger sync
                 cluster_sync_rings(peers_only=not rings_changed)
             else:
-                # Copy just builders to www dir
+                # Copy just builders to www dir and notify peers to only sync
+                # builders.
                 update_www_rings(rings=False)
-                cluster_sync_rings(peers_only=True)
+                cluster_sync_rings(peers_only=True, builders_only=True)
                 log("Rings not ready for sync - skipping", level=DEBUG)
         else:
             log("Rings/builders unchanged so skipping sync", level=DEBUG)
@@ -767,7 +768,7 @@ def mark_www_rings_deleted():
             os.rename(path, "%s.deleted" % (path))
 
 
-def notify_peers_builders_available(use_trigger=True, builders_only=True):
+def notify_peers_builders_available(use_trigger=True, builders_only=False):
     """Notify peer swift-proxy units that they should synchronise ring and
     builder files.
 
@@ -794,7 +795,8 @@ def notify_peers_builders_available(use_trigger=True, builders_only=True):
         relation_set(relation_id=rid, relation_settings=rq)
 
 
-def broadcast_rings_available(peers=True, storage=True, use_trigger=True):
+def broadcast_rings_available(peers=True, storage=True, use_trigger=True,
+                              builders_only=False):
     """Notify storage relations and cluster (peer) relations that rings and
     builders are availble for sync.
 
@@ -808,12 +810,13 @@ def broadcast_rings_available(peers=True, storage=True, use_trigger=True):
         log("Skipping notify storage relations", level=DEBUG)
 
     if peers:
-        notify_peers_builders_available(use_trigger=use_trigger)
+        notify_peers_builders_available(use_trigger=use_trigger,
+                                        builders_only=builders_only)
     else:
         log("Skipping notify peer relations", level=DEBUG)
 
 
-def cluster_sync_rings(peers_only=False):
+def cluster_sync_rings(peers_only=False, builders_only=False):
     """Notify peer relations that they should stop their proxy services.
 
     Peer units will then be expected to do a relation_set with
@@ -834,7 +837,8 @@ def cluster_sync_rings(peers_only=False):
     # relations. If we have been instructed to only broadcast to peers, do
     # nothing.
     if not peer_units():
-        broadcast_rings_available(peers=False, storage=not peers_only)
+        broadcast_rings_available(peers=False, storage=not peers_only,
+                                  builders_only=builders_only)
         return
 
     rel_ids = relation_ids('cluster')
