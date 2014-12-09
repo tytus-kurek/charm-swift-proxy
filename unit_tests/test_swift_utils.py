@@ -123,14 +123,16 @@ class SwiftUtilsTestCase(unittest.TestCase):
                           'builder-broker': None,
                           'peers-only': True,
                           'stop-proxy-service': 'test-uuid',
-                          'stop-proxy-service-ack': None}, rq)
+                          'stop-proxy-service-ack': None,
+                          'sync-only-builders': None}, rq)
 
         rq = rpc.stop_proxy_request()
         self.assertEqual({'trigger': 'test-uuid',
                           'builder-broker': None,
                           'peers-only': None,
                           'stop-proxy-service': 'test-uuid',
-                          'stop-proxy-service-ack': None}, rq)
+                          'stop-proxy-service-ack': None,
+                          'sync-only-builders': None}, rq)
 
     @mock.patch('swift_utils.uuid')
     def test_cluster_rpc_stop_proxy_ack(self, mock_uuid):
@@ -141,7 +143,8 @@ class SwiftUtilsTestCase(unittest.TestCase):
                           'builder-broker': None,
                           'peers-only': '1',
                           'stop-proxy-service': None,
-                          'stop-proxy-service-ack': 'token1'}, rq)
+                          'stop-proxy-service-ack': 'token1',
+                          'sync-only-builders': None}, rq)
 
     @mock.patch('swift_utils.uuid')
     def test_cluster_rpc_sync_request(self, mock_uuid):
@@ -152,7 +155,8 @@ class SwiftUtilsTestCase(unittest.TestCase):
                           'builder-broker': 'HostA',
                           'peers-only': None,
                           'stop-proxy-service': None,
-                          'stop-proxy-service-ack': None}, rq)
+                          'stop-proxy-service-ack': None,
+                          'sync-only-builders': None}, rq)
 
     def test_all_responses_equal(self):
         responses = [{'a': 1, 'c': 3}]
