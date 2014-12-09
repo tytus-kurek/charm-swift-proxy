@@ -595,46 +595,62 @@ def sync_proxy_rings(broker_url):
         synced.append(ring)
 
     # Once all have been successfully downloaded, move them to actual location.
-    for file in synced:
-        os.rename(os.path.join(tmpdir, file), os.path.join(target, file))
+    for f in synced:
+        os.rename(os.path.join(tmpdir, f), os.path.join(target, f))
 
 
 def update_www_rings():
-    """Copy rings to apache www dir."""
-    www_dir = get_www_dir()
-    for ring, builder_path in SWIFT_RINGS.iteritems():
-        ringfile = '%s.%s' % (ring, SWIFT_RING_EXT)
-        shutil.copyfile(os.path.join(SWIFT_CONF_DIR, ringfile),
-                        os.path.join(www_dir, ringfile))
-        shutil.copyfile(builder_path,
-                        os.path.join(www_dir, os.path.basename(builder_path)))
+    """Copy rings to apache www dir.
+
+    Try to do this as atomically as possible to avoid races with storage nodes
+    syncing rings.
+    """
+    tmp_dir = tempfile.mkdtemp(prefix='swift-rings-www-tmp')
+    try:
+        for ring, builder_path in SWIFT_RINGS.iteritems():
+            ringfile = '%s.%s' % (ring, SWIFT_RING_EXT)
+            src = os.path.join(SWIFT_CONF_DIR, ringfile)
+            dst = os.path.join(tmp_dir, ringfile)
+            shutil.copyfile(src, dst)
+
+            src = builder_path
+            dst = os.path.join(tmp_dir, os.path.basename(builder_path))
+            shutil.copyfile(src, dst)
+
+        www_dir = get_www_dir()
+        deleted = "%s.deleted" % (www_dir)
+        os.rename(www_dir, deleted)
+        os.rename(tmp_dir, www_dir)
+        shutil.rmtree(deleted)
+    finally:
+        shutil.rmtree(tmp_dir)
 
 
 def get_rings_checksum():
     """Returns sha256 checksum for rings in /etc/swift."""
-    hash = hashlib.sha256()
+    sha = hashlib.sha256()
     for ring in SWIFT_RINGS.iterkeys():
         path = os.path.join(SWIFT_CONF_DIR, '%s.%s' % (ring, SWIFT_RING_EXT))
         if not os.path.isfile(path):
             continue
 
         with open(path, 'rb') as fd:
-            hash.update(fd.read())
+            sha.update(fd.read())
 
-    return hash.hexdigest()
+    return sha.hexdigest()
 
 
 def get_builders_checksum():
     """Returns sha256 checksum for builders in /etc/swift."""
-    hash = hashlib.sha256()
+    sha = hashlib.sha256()
     for builder in SWIFT_RINGS.itervalues():
         if not os.path.exists(builder):
             continue
 
         with open(builder, 'rb') as fd:
-            hash.update(fd.read())
+            sha.update(fd.read())
 
-    return hash.hexdigest()
+    return sha.hexdigest()
 
 
 def sync_builders_and_rings_if_changed(f):
@@ -752,17 +768,22 @@ def notify_peers_builders_available(use_trigger=True):
 
 
 def broadcast_rings_available(peers=True, storage=True, use_trigger=True):
+    """Notify storage relations and cluster (peer) relations that rings and
+    builders are availble for sync.
+
+    We can opt to only notify peer or storage relations if needs be.
+    """
     if storage:
         # TODO: get ack from storage units that they are synced before
         # syncing proxies.
         notify_storage_rings_available()
     else:
-        log("Skipping notify storage relations")
+        log("Skipping notify storage relations", level=DEBUG)
 
     if peers:
         notify_peers_builders_available(use_trigger=use_trigger)
     else:
-        log("Skipping notify peer relations")
+        log("Skipping notify peer relations", level=DEBUG)
 
 
 def cluster_sync_rings(peers_only=False):
