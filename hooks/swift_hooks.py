@@ -227,7 +227,11 @@ def storage_changed():
 
     # Allow for multiple devs per unit, passed along as a : separated list
     # Update and balance rings.
-    update_rings(devs=relation_get('device').split(':'))
+    devs = relation_get('device')
+    if devs:
+        node_settings['devs'] = devs.split(':')
+
+    update_rings(node_settings)
     # Restart proxy here in case no config changes made (so
     # restart_on_change() ineffective).
     service_restart('swift-proxy')
