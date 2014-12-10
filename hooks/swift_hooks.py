@@ -21,7 +21,6 @@ from swift_utils import (
     balance_rings,
     fully_synced,
     sync_proxy_rings,
-    update_min_part_hours,
     broadcast_rings_available,
     mark_www_rings_deleted,
     SwiftProxyClusterRPC,
@@ -126,7 +125,7 @@ def config_changed():
     if openstack.openstack_upgrade_available('python-swift'):
         do_openstack_upgrade(CONFIGS)
 
-    update_min_part_hours()
+    update_rings(min_part_hours=config('min-hours'))
 
     if not config('disable-ring-balance') and is_elected_leader(SWIFT_HA_RES):
         # Try ring balance. If rings are balanced, no sync will occur.

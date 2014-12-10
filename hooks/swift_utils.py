@@ -455,7 +455,7 @@ def set_min_part_hours(path, value):
 
 
 def get_zone(assignment_policy):
-    """Determine the appropriate zone depending on configured assignment policy.
+    """Determine appropriate zone based on configured assignment policy.
 
     Manual assignment relies on each storage zone being deployed as a
     separate service unit with its desired zone set as a configuration
@@ -717,19 +717,47 @@ def sync_builders_and_rings_if_changed(f):
 
 
 @sync_builders_and_rings_if_changed
-def update_rings(node_settings=None):
-    """Update builder with node settings and balance rings if necessary."""
+def update_rings(node_settings=None, min_part_hours=None):
+    """Update builder with node settings and balance rings if necessary.
+
+    Also update min_part_hours if provided.
+    """
     if not is_elected_leader(SWIFT_HA_RES):
         log("Update rings called by non-leader - skipping", level=WARNING)
         return
+
+    balance_required = False
+
+    if min_part_hours:
+        # NOTE: no need to stop the proxy since we are not changing the rings,
+        # only the builder.
+
+        # Only update if all exist
+        if all([os.path.exists(p) for p in SWIFT_RINGS.itervalues()]):
+            for ring, path in SWIFT_RINGS.iteritems():
+                current_min_part_hours = get_min_part_hours(path)
+                if min_part_hours != current_min_part_hours:
+                    log("Setting ring %s min_part_hours to %s" %
+                        (ring, min_part_hours), level=INFO)
+                    try:
+                        set_min_part_hours(path, min_part_hours)
+                    except SwiftProxyCharmException as exc:
+                        # TODO: ignore for now since this should not be
+                        # critical but in the future we should support a
+                        # rollback.
+                        log(str(exc), level=WARNING)
+                    else:
+                        balance_required = True
 
     if node_settings:
         if 'device' in node_settings:
             for ring in SWIFT_RINGS.itervalues():
                 if not exists_in_ring(ring, node_settings):
                     add_to_ring(ring, node_settings)
+                    balance_required = True
 
-    balance_rings()
+    if balance_required:
+        balance_rings()
 
 
 @sync_builders_and_rings_if_changed
@@ -852,8 +880,8 @@ def cluster_sync_rings(peers_only=False, builders_only=False):
 
 
 def notify_storage_rings_available():
-    """Notify peer swift-storage relations that they should synchronise ring and
-    builder files.
+    """Notify peer swift-storage relations that they should synchronise ring
+    and builder files.
 
     Note that this should only be called from the leader unit.
     """
@@ -905,39 +933,3 @@ def get_hostaddr():
         return get_ipv6_addr(exc_list=[config('vip')])[0]
 
     return unit_get('private-address')
-
-
-def update_min_part_hours():
-    """Update the min_part_hours setting on swift rings.
-
-    This should only be called by the leader unit. Once update has been
-    performed and if setting has changed, rings will be resynced across the
-    cluster.
-    """
-    if not is_elected_leader(SWIFT_HA_RES):
-        # Only the leader can do this.
-        return
-
-    # NOTE: no need to stop the proxy since we are not changing the rings,
-    # only the builder.
-
-    new_min_part_hours = config('min-hours')
-    resync_builders = False
-    # Only update if all exist
-    if all([os.path.exists(p) for p in SWIFT_RINGS.itervalues()]):
-        for ring, path in SWIFT_RINGS.iteritems():
-            min_part_hours = get_min_part_hours(path)
-            if min_part_hours != new_min_part_hours:
-                log("Setting ring %s min_part_hours to %s" %
-                    (ring, new_min_part_hours), level=INFO)
-                try:
-                    set_min_part_hours(path, new_min_part_hours)
-                except SwiftProxyCharmException as exc:
-                    # TODO: ignore for now since this should not be critical
-                    # but in the future we should support a rollback.
-                    log(str(exc), level=WARNING)
-                else:
-                    resync_builders = True
-
-    if resync_builders:
-        balance_rings()

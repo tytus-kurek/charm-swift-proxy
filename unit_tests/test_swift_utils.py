@@ -21,51 +21,53 @@ def init_ring_paths(tmpdir):
 
 class SwiftUtilsTestCase(unittest.TestCase):
 
-    @mock.patch('swift_utils.sync_builders_and_rings_if_changed')
+    @mock.patch('swift_utils.get_builders_checksum')
+    @mock.patch('swift_utils.get_rings_checksum')
     @mock.patch('swift_utils.balance_rings')
     @mock.patch('swift_utils.log')
     @mock.patch('swift_utils.os.path.exists')
     @mock.patch('swift_utils.is_elected_leader')
-    @mock.patch('swift_utils.config')
     @mock.patch('swift_utils.get_min_part_hours')
     @mock.patch('swift_utils.set_min_part_hours')
-    def test_update_min_part_hours(self, mock_set_min_hours,
-                                   mock_get_min_hours, mock_config,
-                                   mock_is_elected_leader, mock_path_exists,
-                                   mock_log, mock_balance_rings,
-                                   mock_sync_builders_and_rings_if_changed):
+    def test_update_rings(self, mock_set_min_hours,
+                          mock_get_min_hours,
+                          mock_is_elected_leader, mock_path_exists,
+                          mock_log, mock_balance_rings,
+                          mock_get_rings_checksum,
+                          mock_get_builders_checksum):
+
+        # Make sure same is returned for both so that we don't try to sync
+        mock_get_rings_checksum.return_value = None
+        mock_get_builders_checksum.return_value = None
 
         # Test blocker 1
         mock_is_elected_leader.return_value = False
-        swift_utils.update_min_part_hours()
-        self.assertFalse(mock_config.called)
+        swift_utils.update_rings()
         self.assertFalse(mock_balance_rings.called)
 
         # Test blocker 2
         mock_path_exists.return_value = False
         mock_is_elected_leader.return_value = True
-        swift_utils.update_min_part_hours()
-        self.assertTrue(mock_config.called)
+        swift_utils.update_rings()
         self.assertFalse(mock_get_min_hours.called)
         self.assertFalse(mock_balance_rings.called)
 
         # Test blocker 3
         mock_path_exists.return_value = True
         mock_is_elected_leader.return_value = True
-        mock_config.return_value = 10
         mock_get_min_hours.return_value = 10
-        swift_utils.update_min_part_hours()
+        swift_utils.update_rings(min_part_hours=10)
         self.assertTrue(mock_get_min_hours.called)
         self.assertFalse(mock_set_min_hours.called)
         self.assertFalse(mock_balance_rings.called)
 
+        mock_get_min_hours.reset_mock()
+
         # Test go through
         mock_path_exists.return_value = True
         mock_is_elected_leader.return_value = True
-        mock_config.return_value = 10
         mock_get_min_hours.return_value = 0
-        swift_utils.update_min_part_hours()
-        self.assertTrue(mock_config.called)
+        swift_utils.update_rings(min_part_hours=10)
         self.assertTrue(mock_get_min_hours.called)
         self.assertTrue(mock_set_min_hours.called)
         self.assertTrue(mock_balance_rings.called)
