@@ -11,3 +11,4 @@ include:
     - payload.execd
     - contrib.network.ip
     - contrib.peerstorage
+    - contrib.python.packages
