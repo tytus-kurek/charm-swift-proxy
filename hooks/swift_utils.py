@@ -390,7 +390,7 @@ def exists_in_ring(ring_path, node):
     return False
 
 
-def add_to_ring(ring_path, node):
+def add_to_ring(ring_path, node, device):
     ring = _load_builder(ring_path)
     port = ring_port(ring_path, node)
 
@@ -404,7 +404,7 @@ def add_to_ring(ring_path, node):
         'zone': node['zone'],
         'ip': node['ip'],
         'port': port,
-        'device': node['device'],
+        'device': device,
         'weight': 100,
         'meta': '',
     }
@@ -750,10 +750,10 @@ def update_rings(node_settings=None, min_part_hours=None):
                         balance_required = True
 
     if node_settings:
-        if 'device' in node_settings:
+        for dev in node_settings.get('devices', []):
             for ring in SWIFT_RINGS.itervalues():
                 if not exists_in_ring(ring, node_settings):
-                    add_to_ring(ring, node_settings)
+                    add_to_ring(ring, node_settings, dev)
                     balance_required = True
 
     if balance_required:
