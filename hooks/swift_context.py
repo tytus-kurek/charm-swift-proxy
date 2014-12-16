@@ -1,3 +1,6 @@
+import os
+import uuid
+
 from charmhelpers.core.hookenv import (
     config,
     log,
@@ -5,38 +8,35 @@ from charmhelpers.core.hookenv import (
     related_units,
     relation_get,
     unit_get,
-    service_name
+    service_name,
 )
-
 from charmhelpers.contrib.openstack.context import (
     OSContextGenerator,
     ApacheSSLContext as SSLContext,
     context_complete,
 )
-
 from charmhelpers.contrib.hahelpers.cluster import (
     determine_api_port,
     determine_apache_port,
 )
-
 from charmhelpers.contrib.network.ip import (
     get_ipv6_addr
 )
-
 from charmhelpers.contrib.openstack.utils import get_host_ip
-import os
-import uuid
+
+
+SWIFT_HASH_FILE = '/var/lib/juju/swift-hash-path.conf'
+WWW_DIR = '/var/www/swift-rings'
 
 
 class HAProxyContext(OSContextGenerator):
     interfaces = ['cluster']
 
     def __call__(self):
-        '''
-        Extends the main charmhelpers HAProxyContext with a port mapping
+        """Extends the main charmhelpers HAProxyContext with a port mapping
         specific to this charm.
         Also used to extend cinder.conf context with correct api_listening_port
-        '''
+        """
         haproxy_port = config('bind-port')
         api_port = determine_apache_port(config('bind-port'))
 
@@ -44,9 +44,6 @@ class HAProxyContext(OSContextGenerator):
             'service_ports': {'swift_api': [haproxy_port, api_port]},
         }
         return ctxt
-
-
-WWW_DIR = '/var/www/swift-rings'
 
 
 class ApacheSSLContext(SSLContext):
@@ -66,6 +63,7 @@ class SwiftRingContext(OSContextGenerator):
                     host_ip = get_ipv6_addr(exc_list=[config('vip')])[0]
                 else:
                     host_ip = get_host_ip(host)
+
                 allowed_hosts.append(host_ip)
 
         ctxt = {
@@ -90,6 +88,7 @@ class SwiftIdentityContext(OSContextGenerator):
         else:
             proxy_ip = get_host_ip(unit_get('private-address'))
             memcached_ip = get_host_ip(unit_get('private-address'))
+
         ctxt = {
             'proxy_ip': proxy_ip,
             'memcached_ip': memcached_ip,
@@ -147,6 +146,7 @@ class SwiftIdentityContext(OSContextGenerator):
                 }
                 if context_complete(ks_auth):
                     ctxt.update(ks_auth)
+
         return ctxt
 
 
@@ -158,9 +158,8 @@ class MemcachedContext(OSContextGenerator):
             ctxt['memcached_ip'] = 'ip6-localhost'
         else:
             ctxt['memcached_ip'] = get_host_ip(unit_get('private-address'))
-        return ctxt
 
-SWIFT_HASH_FILE = '/var/lib/juju/swift-hash-path.conf'
+        return ctxt
 
 
 def get_swift_hash():
@@ -176,6 +175,7 @@ def get_swift_hash():
                                     service_name()))
         with open(SWIFT_HASH_FILE, 'w') as hashfile:
             hashfile.write(swift_hash)
+
     return swift_hash
 
 
