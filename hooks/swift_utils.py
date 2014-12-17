@@ -43,6 +43,7 @@ from charmhelpers.core.hookenv import (
     relation_ids,
     remote_unit,
     local_unit,
+    related_units,
 )
 from charmhelpers.fetch import (
     apt_update,
@@ -692,6 +693,14 @@ def get_builders_checksum():
     return sha.hexdigest()
 
 
+def cluster_units():
+    units = []
+    for rid in relation_ids('cluster'):
+        units = related_units(relid=rid)
+
+    return units
+
+
 def rings_synced():
     """
     """
@@ -701,6 +710,9 @@ def rings_synced():
         r_unit = None
 
     if not r_unit:
+        return False
+
+    if r_unit not in cluster_units():
         return False
 
     token_rid = None
