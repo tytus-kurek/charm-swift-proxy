@@ -583,6 +583,27 @@ def setup_ipv6():
         apt_install('haproxy/trusty-backports', fatal=True)
 
 
+def allow_retries(num_retries, interval=0, exc_type=Exception):
+    """If the decorated function raises exc_type, allow num_retries retry
+    attempts before raising the exception.
+    """
+    def _allow_retries_inner_1(f):
+        def _allow_retries_inner_2(*args, **kwargs):
+            retries = num_retries
+            while True:
+                try:
+                    return f(*args, **kwargs)
+                except exc_type:
+                    retries -= 1
+                    if not retries:
+                        raise
+
+        return _allow_retries_inner_2
+
+    return _allow_retries_inner_1
+
+
+@allow_retries(3, interval=5, exc_type=subprocess.CalledProcessError)
 def sync_proxy_rings(broker_url, builders=True, rings=True):
     """The leader proxy is responsible for intialising, updating and
     rebalancing the ring. Once the leader is ready the rings must then be
@@ -596,28 +617,32 @@ def sync_proxy_rings(broker_url, builders=True, rings=True):
     target = SWIFT_CONF_DIR
     synced = []
     tmpdir = tempfile.mkdtemp(prefix='swiftrings')
-    for server in ['account', 'object', 'container']:
-        if builders:
-            url = '%s/%s.builder' % (broker_url, server)
-            log('Fetching %s.' % url, level=DEBUG)
-            builder = "%s.builder" % (server)
-            cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
-                   os.path.join(tmpdir, builder)]
-            subprocess.check_call(cmd)
-            synced.append(builder)
+    try:
+        for server in ['account', 'object', 'container']:
+            if builders:
+                url = '%s/%s.builder' % (broker_url, server)
+                log('Fetching %s.' % url, level=DEBUG)
+                builder = "%s.builder" % (server)
+                cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
+                       os.path.join(tmpdir, builder)]
+                subprocess.check_call(cmd)
+                synced.append(builder)
 
-        if rings:
-            url = '%s/%s.%s' % (broker_url, server, SWIFT_RING_EXT)
-            log('Fetching %s.' % url, level=DEBUG)
-            ring = '%s.%s' % (server, SWIFT_RING_EXT)
-            cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
-                   os.path.join(tmpdir, ring)]
-            subprocess.check_call(cmd)
-            synced.append(ring)
+            if rings:
+                url = '%s/%s.%s' % (broker_url, server, SWIFT_RING_EXT)
+                log('Fetching %s.' % url, level=DEBUG)
+                ring = '%s.%s' % (server, SWIFT_RING_EXT)
+                cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
+                       os.path.join(tmpdir, ring)]
+                subprocess.check_call(cmd)
+                synced.append(ring)
 
-    # Once all have been successfully downloaded, move them to actual location.
-    for f in synced:
-        os.rename(os.path.join(tmpdir, f), os.path.join(target, f))
+        # Once all have been successfully downloaded, move them to actual
+        # location.
+        for f in synced:
+            os.rename(os.path.join(tmpdir, f), os.path.join(target, f))
+    finally:
+        shutil.rmtree(tmpdir)
 
 
 def ensure_www_dir_permissions(www_dir):
