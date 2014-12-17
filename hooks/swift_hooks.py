@@ -311,8 +311,9 @@ def cluster_leader_actions():
             log("Not all peer apis stopped - skipping sync until all peers "
                 "ready (got %s)" % (responses), level=INFO)
     elif relation_get(attribute=SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC):
-        log("It appears that this is no longer the leader unit - stopping "
-            "proxy and notifying peers", level=ERROR)
+        log("Sync request received yet this is leader unit. This would "
+            "indicate that the leader has changed mid-sync - stopping proxy "
+            "and notifying peers", level=ERROR)
         service_stop('swift-proxy')
         SwiftProxyClusterRPC().notify_leader_changed()
         return
