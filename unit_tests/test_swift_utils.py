@@ -21,6 +21,7 @@ def init_ring_paths(tmpdir):
 
 class SwiftUtilsTestCase(unittest.TestCase):
 
+    @mock.patch('swift_utils.update_www_rings')
     @mock.patch('swift_utils.get_builders_checksum')
     @mock.patch('swift_utils.get_rings_checksum')
     @mock.patch('swift_utils.balance_rings')
@@ -34,7 +35,7 @@ class SwiftUtilsTestCase(unittest.TestCase):
                           mock_is_elected_leader, mock_path_exists,
                           mock_log, mock_balance_rings,
                           mock_get_rings_checksum,
-                          mock_get_builders_checksum):
+                          mock_get_builders_checksum, mock_update_www_rings):
 
         # Make sure same is returned for both so that we don't try to sync
         mock_get_rings_checksum.return_value = None
