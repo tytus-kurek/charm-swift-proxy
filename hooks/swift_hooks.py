@@ -301,6 +301,7 @@ def cluster_leader_actions():
         SwiftProxyClusterRPC().notify_leader_changed()
         return
     elif ack_key in settings:
+        token = settings[ack_key] 
         # Find out if all peer units have been stopped.
         responses = []
         for rid in relation_ids('cluster'):
@@ -319,16 +320,10 @@ def cluster_leader_actions():
                                                        default=0))
             log("Syncing rings and builders (peers-only=%s)" % (peers_only),
                 level=DEBUG)
-            broadcast_rings_available(storage=not peers_only)
+            broadcast_rings_available(token, storage=not peers_only)
         else:
             log("Not all peer apis stopped - skipping sync until all peers "
                 "ready (got %s)" % (responses), level=INFO)
-    else:
-        # Otherwise it might be a new swift-proxy unit so tell it to sync
-        # rings. Note that broker info may already be present in the cluster
-        # relation so don't use a trigger otherwise the hook will re-fire on
-        # all peers.
-        broadcast_rings_available(storage=False, use_trigger=False)
 
     CONFIGS.write_all()
 

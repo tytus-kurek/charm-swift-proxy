@@ -41,6 +41,8 @@ from charmhelpers.core.hookenv import (
     unit_get,
     relation_set,
     relation_ids,
+    remote_unit,
+    local_unit,
 )
 from charmhelpers.fetch import (
     apt_update,
@@ -207,18 +209,14 @@ class SwiftProxyClusterRPC(object):
         rq['peers-only'] = echo_peers_only
         return rq
 
-    def sync_rings_request(self, broker_host, use_trigger=True,
+    def sync_rings_request(self, broker_host, broker_token,
                            builders_only=False):
         """Request for peer to sync rings.
 
         NOTE: leader action
         """
         rq = self.template()
-        # There may be cases where we don't want to use the trigger e.g. when
-        # we are re-issuing a request that may already have been received but
-        # we don't want the receiver hook to re-fire.
-        if use_trigger:
-            rq['trigger'] = str(uuid.uuid4())
+        rq['trigger'] = broker_token
 
         if builders_only:
             rq['sync-only-builders'] = 1
@@ -694,6 +692,49 @@ def get_builders_checksum():
     return sha.hexdigest()
 
 
+def rings_synced():
+    r_unit = remote_unit()
+    if not r_unit:
+        return False
+
+    token_rid = None
+    token = None
+    ack_token = None
+    for rid in relation_ids('cluster'):
+        broker = relation_get(attribute='builder-broker', rid=rid,
+                              unit=r_unit)
+        if broker:
+            token_rid = rid
+            token = relation_get(attribute='token', rid=rid, unit=r_unit)
+        else:
+            token = None
+
+    if token:
+        key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK
+        ack_token = relation_get(attribute=key, rid=token_rid,
+                                 unit=local_unit())
+        return token == ack_token
+    else:
+        return False
+
+
+def get_broker_token():
+    r_unit = remote_unit()
+    if not r_unit:
+        log("No remote unit", level=DEBUG)
+        return None
+
+    for rid in relation_ids('cluster'):
+        responses = relation_get(unit=r_unit, rid=rid)
+
+    key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK
+    if not all_responses_equal(responses, key):
+        log("Not all acks equal", level=DEBUG)
+        return None
+
+    return responses[0].get(key, None)
+
+
 def sync_builders_and_rings_if_changed(f):
     """Only trigger a ring or builder sync if they have changed as a result of
     the decorated operation.
@@ -715,20 +756,23 @@ def sync_builders_and_rings_if_changed(f):
         rings_ready = len(glob.glob(rings_path)) == len(SWIFT_RINGS)
         rings_changed = rings_after != rings_before
         builders_changed = builders_after != builders_before
-
-        # Copy builders and rings (if available) to the server dir.
-        # Note that we may be a recently-elected leader so we need to ensure
-        # rings are available.
-        update_www_rings(rings=rings_ready)
-        if rings_changed or builders_changed:
+        broker_token = get_broker_token()
+        if broker_token and (rings_changed or builders_changed):
+            # Copy builders and rings (if available) to the server dir.
+            update_www_rings(rings=rings_ready)
             if rings_ready:
                 # Trigger sync
-                cluster_sync_rings(peers_only=not rings_changed)
+                cluster_sync_rings(broker_token, peers_only=not rings_changed)
             else:
-                cluster_sync_rings(peers_only=True, builders_only=True)
+                cluster_sync_rings(broker_token, peers_only=True,
+                                   builders_only=True)
                 log("Rings not ready for sync - skipping", level=DEBUG)
         else:
             log("Rings/builders unchanged so skipping sync", level=DEBUG)
+            if rings_synced():
+                # Note that we may be a recently-elected leader so we need to
+                # ensure rings are available.
+                update_www_rings(rings=rings_ready)
 
         return ret
 
@@ -815,7 +859,7 @@ def mark_www_rings_deleted():
             os.rename(path, "%s.deleted" % (path))
 
 
-def notify_peers_builders_available(use_trigger=True, builders_only=False):
+def notify_peers_builders_available(broker_token, builders_only=False):
     """Notify peer swift-proxy units that they should synchronise ring and
     builder files.
 
@@ -835,14 +879,14 @@ def notify_peers_builders_available(use_trigger=True, builders_only=False):
     # Notify peers that builders are available
     log("Notifying peer(s) that rings are ready for sync.", level=INFO)
     rq = SwiftProxyClusterRPC().sync_rings_request(hostname,
-                                                   use_trigger=use_trigger,
+                                                   broker_token,
                                                    builders_only=builders_only)
     for rid in relation_ids('cluster'):
         log("Notifying rid=%s (%s)" % (rid, rq), level=DEBUG)
         relation_set(relation_id=rid, relation_settings=rq)
 
 
-def broadcast_rings_available(peers=True, storage=True, use_trigger=True,
+def broadcast_rings_available(broker_token, peers=True, storage=True,
                               builders_only=False):
     """Notify storage relations and cluster (peer) relations that rings and
     builders are availble for sync.
@@ -857,13 +901,13 @@ def broadcast_rings_available(peers=True, storage=True, use_trigger=True,
         log("Skipping notify storage relations", level=DEBUG)
 
     if peers:
-        notify_peers_builders_available(use_trigger=use_trigger,
+        notify_peers_builders_available(broker_token,
                                         builders_only=builders_only)
     else:
         log("Skipping notify peer relations", level=DEBUG)
 
 
-def cluster_sync_rings(peers_only=False, builders_only=False):
+def cluster_sync_rings(broker_token, peers_only=False, builders_only=False):
     """Notify peer relations that they should stop their proxy services.
 
     Peer units will then be expected to do a relation_set with
@@ -884,7 +928,8 @@ def cluster_sync_rings(peers_only=False, builders_only=False):
     # relations. If we have been instructed to only broadcast to peers, do
     # nothing.
     if not peer_units():
-        broadcast_rings_available(peers=False, storage=not peers_only,
+        broadcast_rings_available(broker_token, peers=False,
+                                  storage=not peers_only,
                                   builders_only=builders_only)
         return
 
