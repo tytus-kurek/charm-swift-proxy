@@ -711,20 +711,20 @@ def sync_builders_and_rings_if_changed(f):
         rings_after = get_rings_checksum()
         builders_after = get_builders_checksum()
 
+        rings_path = os.path.join(SWIFT_CONF_DIR, '*.%s' % (SWIFT_RING_EXT))
+        rings_ready = len(glob.glob(rings_path)) == len(SWIFT_RINGS)
         rings_changed = rings_after != rings_before
         builders_changed = builders_after != builders_before
+
+        # Copy builders and rings (if available) to the server dir.
+        # Note that we may be a recently-elected leader so we need to ensure
+        # rings are available.
+        update_www_rings(rings=rings_ready)
         if rings_changed or builders_changed:
-            rings_path = os.path.join(SWIFT_CONF_DIR, '*.%s' %
-                                      (SWIFT_RING_EXT))
-            if len(glob.glob(rings_path)) == len(SWIFT_RINGS):
-                # Copy all to www dir
-                update_www_rings()
+            if rings_ready:
                 # Trigger sync
                 cluster_sync_rings(peers_only=not rings_changed)
             else:
-                # Copy just builders to www dir and notify peers to only sync
-                # builders.
-                update_www_rings(rings=False)
                 cluster_sync_rings(peers_only=True, builders_only=True)
                 log("Rings not ready for sync - skipping", level=DEBUG)
         else:
