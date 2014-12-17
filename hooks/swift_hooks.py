@@ -360,6 +360,7 @@ def cluster_non_leader_actions():
     broker = settings.get('builder-broker', None)
     if not broker:
         log("No update available", level=DEBUG)
+        service_start('swift-proxy')
         return
 
     builders_only = int(settings.get('sync-only-builders', 0))
