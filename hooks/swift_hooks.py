@@ -285,9 +285,18 @@ def cluster_leader_actions():
     NOTE: must be called by leader from cluster relation hook.
     """
     # If we have received an ack, check other units
-    settings = relation_get()
+    settings = relation_get() or {}
     ack_key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK
-    if settings and ack_key in settings:
+
+    # Protect against leader changing mid-sync
+    if settings.get(SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC):
+        log("Sync request received yet this is leader unit. This would "
+            "indicate that the leader has changed mid-sync - stopping proxy "
+            "and notifying peers", level=ERROR)
+        service_stop('swift-proxy')
+        SwiftProxyClusterRPC().notify_leader_changed()
+        return
+    elif ack_key in settings:
         # Find out if all peer units have been stopped.
         responses = []
         for rid in relation_ids('cluster'):
@@ -310,13 +319,6 @@ def cluster_leader_actions():
         else:
             log("Not all peer apis stopped - skipping sync until all peers "
                 "ready (got %s)" % (responses), level=INFO)
-    elif relation_get(attribute=SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC):
-        log("Sync request received yet this is leader unit. This would "
-            "indicate that the leader has changed mid-sync - stopping proxy "
-            "and notifying peers", level=ERROR)
-        service_stop('swift-proxy')
-        SwiftProxyClusterRPC().notify_leader_changed()
-        return
     else:
         # Otherwise it might be a new swift-proxy unit so tell it to sync
         # rings. Note that broker info may already be present in the cluster
@@ -332,7 +334,7 @@ def cluster_non_leader_actions():
 
     NOTE: must be called by non-leader from cluster relation hook.
     """
-    settings = relation_get()
+    settings = relation_get() or {}
 
     # Check whether we have been requested to stop proxy service
     rq_key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC
