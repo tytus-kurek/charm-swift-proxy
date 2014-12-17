@@ -55,7 +55,9 @@ from charmhelpers.contrib.network.ip import (
     format_ipv6_addr,
     get_ipv6_addr,
 )
-
+from charmhelpers.core.decorators import (
+    retry_on_exception,
+)
 
 # Various config files that are managed via templating.
 SWIFT_CONF_DIR = '/etc/swift'
@@ -583,27 +585,7 @@ def setup_ipv6():
         apt_install('haproxy/trusty-backports', fatal=True)
 
 
-def allow_retries(num_retries, interval=0, exc_type=Exception):
-    """If the decorated function raises exc_type, allow num_retries retry
-    attempts before raising the exception.
-    """
-    def _allow_retries_inner_1(f):
-        def _allow_retries_inner_2(*args, **kwargs):
-            retries = num_retries
-            while True:
-                try:
-                    return f(*args, **kwargs)
-                except exc_type:
-                    retries -= 1
-                    if not retries:
-                        raise
-
-        return _allow_retries_inner_2
-
-    return _allow_retries_inner_1
-
-
-@allow_retries(3, interval=5, exc_type=subprocess.CalledProcessError)
+@retry_on_exception(3, base_delay=2, exc_type=subprocess.CalledProcessError)
 def sync_proxy_rings(broker_url, builders=True, rings=True):
     """The leader proxy is responsible for intialising, updating and
     rebalancing the ring. Once the leader is ready the rings must then be
