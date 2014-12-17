@@ -301,7 +301,7 @@ def cluster_leader_actions():
         SwiftProxyClusterRPC().notify_leader_changed()
         return
     elif ack_key in settings:
-        token = settings[ack_key] 
+        token = settings[ack_key]
         # Find out if all peer units have been stopped.
         responses = []
         for rid in relation_ids('cluster'):

@@ -693,7 +693,13 @@ def get_builders_checksum():
 
 
 def rings_synced():
-    r_unit = remote_unit()
+    """
+    """
+    try:
+        r_unit = remote_unit()
+    except KeyError:
+        r_unit = None
+
     if not r_unit:
         return False
 
@@ -719,7 +725,13 @@ def rings_synced():
 
 
 def get_broker_token():
-    r_unit = remote_unit()
+    """
+    """
+    try:
+        r_unit = remote_unit()
+    except KeyError:
+        r_unit = None
+
     if not r_unit:
         log("No remote unit", level=DEBUG)
         return None
