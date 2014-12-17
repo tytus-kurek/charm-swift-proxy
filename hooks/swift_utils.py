@@ -714,7 +714,7 @@ def rings_synced():
         return None
 
     if r_unit not in cluster_units():
-        log("Remote unit '%s' not a cluster peer", level=DEBUG)
+        log("Remote unit '%s' not a cluster peer" % (r_unit), level=DEBUG)
         return False
 
     token_rid = None
@@ -751,7 +751,7 @@ def get_broker_token():
         return None
 
     if r_unit not in cluster_units():
-        log("Remote unit '%s' not a cluster peer", level=DEBUG)
+        log("Remote unit '%s' not a cluster peer" % (r_unit), level=DEBUG)
         return False
 
     for rid in relation_ids('cluster'):
