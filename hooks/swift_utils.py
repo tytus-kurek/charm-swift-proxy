@@ -831,7 +831,7 @@ def notify_peers_builders_available(use_trigger=True, builders_only=False):
                                                    use_trigger=use_trigger,
                                                    builders_only=builders_only)
     for rid in relation_ids('cluster'):
-        log("Notifying rid=%s" % (rid), level=DEBUG)
+        log("Notifying rid=%s (%s)" % (rid, rq), level=DEBUG)
         relation_set(relation_id=rid, relation_settings=rq)
 
 

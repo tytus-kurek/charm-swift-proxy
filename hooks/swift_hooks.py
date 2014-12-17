@@ -37,6 +37,7 @@ from charmhelpers.contrib.hahelpers.cluster import (
 from charmhelpers.core.hookenv import (
     config,
     local_unit,
+    remote_unit,
     unit_get,
     relation_set,
     relation_ids,
@@ -284,6 +285,9 @@ def cluster_leader_actions():
 
     NOTE: must be called by leader from cluster relation hook.
     """
+    log("Cluster changed by unit=%s (local is leader)" % (remote_unit()),
+        level=DEBUG)
+
     # If we have received an ack, check other units
     settings = relation_get() or {}
     ack_key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK
@@ -334,6 +338,8 @@ def cluster_non_leader_actions():
 
     NOTE: must be called by non-leader from cluster relation hook.
     """
+    log("Cluster changed by unit=%s (local is non-leader)" % (remote_unit()),
+        level=DEBUG)
     settings = relation_get() or {}
 
     # Check whether we have been requested to stop proxy service
