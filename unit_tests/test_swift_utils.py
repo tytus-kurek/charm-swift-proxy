@@ -124,6 +124,7 @@ class SwiftUtilsTestCase(unittest.TestCase):
         self.assertEqual({'trigger': 'test-uuid',
                           'builder-broker': None,
                           'peers-only': True,
+                          'leader-changed-notification': None,
                           'stop-proxy-service': 'test-uuid',
                           'stop-proxy-service-ack': None,
                           'sync-only-builders': None}, rq)
@@ -132,6 +133,7 @@ class SwiftUtilsTestCase(unittest.TestCase):
         self.assertEqual({'trigger': 'test-uuid',
                           'builder-broker': None,
                           'peers-only': None,
+                          'leader-changed-notification': None,
                           'stop-proxy-service': 'test-uuid',
                           'stop-proxy-service-ack': None,
                           'sync-only-builders': None}, rq)
@@ -144,6 +146,7 @@ class SwiftUtilsTestCase(unittest.TestCase):
         self.assertEqual({'trigger': 'token2',
                           'builder-broker': None,
                           'peers-only': '1',
+                          'leader-changed-notification': None,
                           'stop-proxy-service': None,
                           'stop-proxy-service-ack': 'token1',
                           'sync-only-builders': None}, rq)
@@ -156,6 +159,20 @@ class SwiftUtilsTestCase(unittest.TestCase):
         self.assertEqual({'trigger': 'token1',
                           'builder-broker': 'HostA',
                           'peers-only': None,
+                          'leader-changed-notification': None,
+                          'stop-proxy-service': None,
+                          'stop-proxy-service-ack': None,
+                          'sync-only-builders': None}, rq)
+
+    @mock.patch('swift_utils.uuid')
+    def test_cluster_rpc_notify_leader_changed(self, mock_uuid):
+        mock_uuid.uuid4.return_value = 'token1'
+        rpc = swift_utils.SwiftProxyClusterRPC()
+        rq = rpc.notify_leader_changed()
+        self.assertEqual({'trigger': 'token1',
+                          'builder-broker': None,
+                          'peers-only': None,
+                          'leader-changed-notification': 'token1',
                           'stop-proxy-service': None,
                           'stop-proxy-service-ack': None,
                           'sync-only-builders': None}, rq)

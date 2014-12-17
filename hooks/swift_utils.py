@@ -163,6 +163,7 @@ class SwiftProxyClusterRPC(object):
 
     KEY_STOP_PROXY_SVC = 'stop-proxy-service'
     KEY_STOP_PROXY_SVC_ACK = 'stop-proxy-service-ack'
+    KEY_NOTIFY_LEADER_CHANGED = 'leader-changed-notification'
 
     def __init__(self, version=1):
         self._version = version
@@ -174,6 +175,7 @@ class SwiftProxyClusterRPC(object):
                          'builder-broker': None,
                          self.KEY_STOP_PROXY_SVC: None,
                          self.KEY_STOP_PROXY_SVC_ACK: None,
+                         self.KEY_NOTIFY_LEADER_CHANGED: None,
                          'peers-only': None,
                          'sync-only-builders': None}}
         return copy.deepcopy(templates[self._version])
@@ -220,6 +222,16 @@ class SwiftProxyClusterRPC(object):
             rq['sync-only-builders'] = 1
 
         rq['builder-broker'] = broker_host
+        return rq
+
+    def notify_leader_changed(self):
+        """Notify peers that leader has changed.
+
+        NOTE: non-leader action
+        """
+        rq = self.template()
+        rq['trigger'] = str(uuid.uuid4())
+        rq[self.KEY_NOTIFY_LEADER_CHANGED] = rq['trigger']
         return rq
 
 

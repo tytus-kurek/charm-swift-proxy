@@ -46,6 +46,7 @@ from charmhelpers.core.hookenv import (
     DEBUG,
     INFO,
     WARNING,
+    ERROR,
     Hooks, UnregisteredHookError,
     open_port,
 )
@@ -309,6 +310,12 @@ def cluster_leader_actions():
         else:
             log("Not all peer apis stopped - skipping sync until all peers "
                 "ready (got %s)" % (responses), level=INFO)
+    elif relation_get(attribute=SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC):
+        log("It appears that this is no longer the leader unit - stopping "
+            "proxy and notifying peers", level=ERROR)
+        service_stop('swift-proxy')
+        SwiftProxyClusterRPC().notify_leader_changed()
+        return
     else:
         # Otherwise it might be a new swift-proxy unit so tell it to sync
         # rings. Note that broker info may already be present in the cluster
@@ -370,6 +377,16 @@ def cluster_non_leader_actions():
             'cluster-relation-departed')
 @restart_on_change(restart_map())
 def cluster_changed():
+    key = SwiftProxyClusterRPC.KEY_NOTIFY_LEADER_CHANGED
+    leader_changed = relation_get(attribute=key)
+    if leader_changed:
+        log("Leader changed notification received from peer unit. Since this "
+            "most likely occurred during a ring sync proxies will be "
+            "disabled until the leader is restored and a fresh sync request "
+            "is set out", level=WARNING)
+        service_stop("swift-proxy")
+        return
+
     if is_elected_leader(SWIFT_HA_RES):
         cluster_leader_actions()
     else:
