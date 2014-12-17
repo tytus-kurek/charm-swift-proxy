@@ -227,7 +227,7 @@ class SwiftProxyClusterRPC(object):
     def notify_leader_changed(self):
         """Notify peers that leader has changed.
 
-        NOTE: non-leader action
+        NOTE: leader action
         """
         rq = self.template()
         rq['trigger'] = str(uuid.uuid4())
