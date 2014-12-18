@@ -21,7 +21,6 @@ def init_ring_paths(tmpdir):
 
 class SwiftUtilsTestCase(unittest.TestCase):
 
-    @mock.patch('swift_utils.rings_synced')
     @mock.patch('swift_utils.get_broker_token')
     @mock.patch('swift_utils.update_www_rings')
     @mock.patch('swift_utils.get_builders_checksum')
@@ -38,9 +37,8 @@ class SwiftUtilsTestCase(unittest.TestCase):
                           mock_log, mock_balance_rings,
                           mock_get_rings_checksum,
                           mock_get_builders_checksum, mock_update_www_rings,
-                          mock_get_broker_token, mock_rings_synced):
+                          mock_get_broker_token):
         mock_get_broker_token.return_value = "token1"
-        mock_rings_synced.return_value = True
 
         # Make sure same is returned for both so that we don't try to sync
         mock_get_rings_checksum.return_value = None
