@@ -175,6 +175,7 @@ class SwiftProxyClusterRPC(object):
         # Everything must be None by default so it gets dropped from the
         # relation unless we want it to be set.
         templates = {1: {'trigger': None,
+                         'broker-token': None,
                          'builder-broker': None,
                          self.KEY_STOP_PROXY_SVC: None,
                          self.KEY_STOP_PROXY_SVC_ACK: None,
@@ -215,11 +216,12 @@ class SwiftProxyClusterRPC(object):
         NOTE: leader action
         """
         rq = self.template()
-        rq['trigger'] = broker_token
+        rq['trigger'] = str(uuid.uuid4())
 
         if builders_only:
             rq['sync-only-builders'] = 1
 
+        rq['broker-token'] = broker_token
         rq['builder-broker'] = broker_host
         return rq
 
@@ -713,6 +715,10 @@ def get_broker_token():
             responses.append(relation_get(attribute=ack_key, rid=rid,
                                           unit=unit))
 
+    # If no acks exist we have probably never done a sync so make up a token
+    if len(responses) == 0:
+        return str(uuid.uuid4())
+
     if not all(responses) or len(set(responses)) != 1:
         log("Not all ack tokens equal - %s" % (responses), level=DEBUG)
         return None
@@ -741,24 +747,17 @@ def sync_builders_and_rings_if_changed(f):
         rings_ready = len(glob.glob(rings_path)) == len(SWIFT_RINGS)
         rings_changed = rings_after != rings_before
         builders_changed = builders_after != builders_before
-        broker_token = get_broker_token()
-        if broker_token:
-            if rings_changed or builders_changed:
-                # Copy builders and rings (if available) to the server dir.
-                update_www_rings(rings=rings_ready)
-                if rings_ready:
-                    # Trigger sync
-                    cluster_sync_rings(broker_token,
-                                       peers_only=not rings_changed)
-                else:
-                    cluster_sync_rings(broker_token, peers_only=True,
-                                       builders_only=True)
-                    log("Rings not ready for sync - skipping", level=DEBUG)
+        if rings_changed or builders_changed:
+            # Copy builders and rings (if available) to the server dir.
+            update_www_rings(rings=rings_ready)
+            if rings_ready:
+                # Trigger sync
+                cluster_sync_rings(peers_only=not rings_changed)
             else:
-                log("Rings/builders unchanged so skipping sync", level=DEBUG)
+                cluster_sync_rings(builders_only=True)
+                log("Rings not ready for sync - skipping", level=DEBUG)
         else:
-            log("Failed to get broker token so cannot do cluster sync",
-                level=WARNING)
+            log("Rings/builders unchanged so skipping sync", level=DEBUG)
 
         return ret
 
@@ -893,7 +892,7 @@ def broadcast_rings_available(broker_token, peers=True, storage=True,
         log("Skipping notify peer relations", level=DEBUG)
 
 
-def cluster_sync_rings(broker_token, peers_only=False, builders_only=False):
+def cluster_sync_rings(peers_only=False, builders_only=False):
     """Notify peer relations that they should stop their proxy services.
 
     Peer units will then be expected to do a relation_set with
@@ -914,6 +913,7 @@ def cluster_sync_rings(broker_token, peers_only=False, builders_only=False):
     # relations. If we have been instructed to only broadcast to peers, do
     # nothing.
     if not peer_units():
+        broker_token = get_broker_token()
         broadcast_rings_available(broker_token, peers=False,
                                   storage=not peers_only,
                                   builders_only=builders_only)
