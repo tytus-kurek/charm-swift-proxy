@@ -696,14 +696,6 @@ def get_builders_checksum():
     return sha.hexdigest()
 
 
-def cluster_units():
-    units = []
-    for rid in relation_ids('cluster'):
-        units = related_units(relid=rid)
-
-    return units
-
-
 def get_broker_token():
     """Get ack token from peers to be used as broker token.
 
