@@ -41,8 +41,6 @@ from charmhelpers.core.hookenv import (
     unit_get,
     relation_set,
     relation_ids,
-    remote_unit,
-    local_unit,
     related_units,
 )
 from charmhelpers.fetch import (
@@ -701,55 +699,16 @@ def cluster_units():
     return units
 
 
-def rings_synced():
-    """
-    """
-    try:
-        r_unit = remote_unit()
-    except KeyError:
-        r_unit = None
-
-    if not r_unit:
-        log("No remote unit available", level=DEBUG)
-        return None
-
-    if r_unit not in cluster_units():
-        log("Remote unit '%s' not a cluster peer" % (r_unit), level=DEBUG)
-        return False
-
-    token_rid = None
-    token = None
-    ack_token = None
-    for rid in relation_ids('cluster'):
-        broker = relation_get(attribute='builder-broker', rid=rid,
-                              unit=r_unit)
-        if broker:
-            token_rid = rid
-            token = relation_get(attribute='token', rid=rid, unit=r_unit)
-        else:
-            token = None
-
-    if token:
-        key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK
-        ack_token = relation_get(attribute=key, rid=token_rid,
-                                 unit=local_unit())
-        return token == ack_token
-    else:
-        return False
-
-
 def get_broker_token():
-    """
+    """Get ack token from peers to be used as broker token.
+
+    Must be equal across all peers.
+
+    Returns token or None if not found.
     """
     responses = []
-    broker_tokens = []
     ack_key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK
-    broker_key = 'builder-broker'
     for rid in relation_ids('cluster'):
-        s = relation_get(rid=rid, unit=local_unit())
-        if s.get(broker_key, None):
-            broker_tokens.append(s['token'])
-
         for unit in related_units(rid):
             responses.append(relation_get(attribute=ack_key, rid=rid,
                                           unit=unit))
@@ -757,11 +716,6 @@ def get_broker_token():
     if not all(responses) or len(set(responses)) != 1:
         log("Not all ack tokens equal - %s" % (responses), level=DEBUG)
         return None
-
-    if len(broker_tokens) > 0:
-        if not all(broker_tokens) or len(set(broker_tokens)) != 1:
-            log("Not all builder tokens equal - %s" % (broker_tokens), level=DEBUG)
-            return None
 
     return responses[0]
 
@@ -788,22 +742,23 @@ def sync_builders_and_rings_if_changed(f):
         rings_changed = rings_after != rings_before
         builders_changed = builders_after != builders_before
         broker_token = get_broker_token()
-        if broker_token and (rings_changed or builders_changed):
-            # Copy builders and rings (if available) to the server dir.
-            update_www_rings(rings=rings_ready)
-            if rings_ready:
-                # Trigger sync
-                cluster_sync_rings(broker_token, peers_only=not rings_changed)
-            else:
-                cluster_sync_rings(broker_token, peers_only=True,
-                                   builders_only=True)
-                log("Rings not ready for sync - skipping", level=DEBUG)
-        else:
-            log("Rings/builders unchanged so skipping sync", level=DEBUG)
-            if rings_synced():
-                # Note that we may be a recently-elected leader so we need to
-                # ensure rings are available.
+        if broker_token:
+            if rings_changed or builders_changed:
+                # Copy builders and rings (if available) to the server dir.
                 update_www_rings(rings=rings_ready)
+                if rings_ready:
+                    # Trigger sync
+                    cluster_sync_rings(broker_token,
+                                       peers_only=not rings_changed)
+                else:
+                    cluster_sync_rings(broker_token, peers_only=True,
+                                       builders_only=True)
+                    log("Rings not ready for sync - skipping", level=DEBUG)
+            else:
+                log("Rings/builders unchanged so skipping sync", level=DEBUG)
+        else:
+            log("Failed to get broker token so cannot do cluster sync",
+                level=WARNING)
 
         return ret
 
