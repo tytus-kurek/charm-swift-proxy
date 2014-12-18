@@ -129,6 +129,7 @@ class SwiftUtilsTestCase(unittest.TestCase):
         rpc = swift_utils.SwiftProxyClusterRPC()
         rq = rpc.stop_proxy_request(peers_only=True)
         self.assertEqual({'trigger': 'test-uuid',
+                          'broker-token': None,
                           'builder-broker': None,
                           'peers-only': True,
                           'leader-changed-notification': None,
@@ -138,6 +139,7 @@ class SwiftUtilsTestCase(unittest.TestCase):
 
         rq = rpc.stop_proxy_request()
         self.assertEqual({'trigger': 'test-uuid',
+                          'broker-token': None,
                           'builder-broker': None,
                           'peers-only': None,
                           'leader-changed-notification': None,
@@ -151,6 +153,7 @@ class SwiftUtilsTestCase(unittest.TestCase):
         rpc = swift_utils.SwiftProxyClusterRPC()
         rq = rpc.stop_proxy_ack(echo_token='token1', echo_peers_only='1')
         self.assertEqual({'trigger': 'token2',
+                          'broker-token': None,
                           'builder-broker': None,
                           'peers-only': '1',
                           'leader-changed-notification': None,
@@ -158,10 +161,13 @@ class SwiftUtilsTestCase(unittest.TestCase):
                           'stop-proxy-service-ack': 'token1',
                           'sync-only-builders': None}, rq)
 
-    def test_cluster_rpc_sync_request(self):
+    @mock.patch('swift_utils.uuid')
+    def test_cluster_rpc_sync_request(self, mock_uuid):
+        mock_uuid.uuid4.return_value = 'token2'
         rpc = swift_utils.SwiftProxyClusterRPC()
         rq = rpc.sync_rings_request('HostA', 'token1')
-        self.assertEqual({'trigger': 'token1',
+        self.assertEqual({'trigger': 'token2',
+                          'broker-token': 'token1',
                           'builder-broker': 'HostA',
                           'peers-only': None,
                           'leader-changed-notification': None,
@@ -175,6 +181,7 @@ class SwiftUtilsTestCase(unittest.TestCase):
         rpc = swift_utils.SwiftProxyClusterRPC()
         rq = rpc.notify_leader_changed()
         self.assertEqual({'trigger': 'token1',
+                          'broker-token': None,
                           'builder-broker': None,
                           'peers-only': None,
                           'leader-changed-notification': 'token1',
