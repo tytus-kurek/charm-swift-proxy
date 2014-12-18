@@ -746,7 +746,7 @@ def get_broker_token():
     ack_key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK
     broker_key = 'builder-broker'
     for rid in relation_ids('cluster'):
-        s = relation_get(rid=rid, unit=local_unit)
+        s = relation_get(rid=rid, unit=local_unit())
         if s.get(broker_key, None):
             broker_tokens.append(s['token'])
 
