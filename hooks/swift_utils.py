@@ -758,12 +758,12 @@ def get_broker_token():
         log("Not all ack tokens equal - %s" % (responses), level=DEBUG)
         return None
 
-    if not all(broker_tokens) or len(set(broker_tokens)) != 1:
-        log("Not all builder tokens equal - %s" % (responses), level=DEBUG)
-        return None
+    if len(broker_tokens) > 0:
+        if not all(broker_tokens) or len(set(broker_tokens)) != 1:
+            log("Not all builder tokens equal - %s" % (broker_tokens), level=DEBUG)
+            return None
 
-    token = broker_tokens[0]
-    return token
+    return responses[0]
 
 
 def sync_builders_and_rings_if_changed(f):
