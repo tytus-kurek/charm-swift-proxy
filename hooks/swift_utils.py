@@ -754,7 +754,7 @@ def get_broker_token():
             responses.append(relation_get(attribute=ack_key, rid=rid,
                                           unit=unit))
 
-    if not all_responses_equal(responses, ack_key):
+    if not all(responses) or len(set(responses)) != 1:
         log("Not all ack tokens equal - %s" % (responses), level=DEBUG)
         return None
 
