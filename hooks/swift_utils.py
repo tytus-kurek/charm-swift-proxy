@@ -6,6 +6,7 @@ import pwd
 import shutil
 import subprocess
 import tempfile
+import threading
 import uuid
 
 from collections import OrderedDict
@@ -78,6 +79,8 @@ APACHE_SITE_24_CONF = os.path.join(APACHE_SITES_AVAILABLE,
 
 WWW_DIR = '/var/www/swift-rings'
 ALTERNATE_WWW_DIR = '/var/www/html/swift-rings'
+
+RING_SYNC_SEMAPHORE = threading.Semaphore()
 
 
 def get_www_dir():
@@ -735,31 +738,42 @@ def sync_builders_and_rings_if_changed(f):
             log("Sync rings called by non-leader - skipping", level=WARNING)
             return
 
-        rings_before = get_rings_checksum()
-        builders_before = get_builders_checksum()
+        try:
+            # Ensure we don't do a double sync if we are nested.
+            do_sync = False
+            if RING_SYNC_SEMAPHORE.acquire(blocking=0):
+                do_sync = True
+                rings_before = get_rings_checksum()
+                builders_before = get_builders_checksum()
 
-        ret = f(*args, **kwargs)
+            ret = f(*args, **kwargs)
 
-        rings_after = get_rings_checksum()
-        builders_after = get_builders_checksum()
+            if not do_sync:
+                return ret
 
-        rings_path = os.path.join(SWIFT_CONF_DIR, '*.%s' % (SWIFT_RING_EXT))
-        rings_ready = len(glob.glob(rings_path)) == len(SWIFT_RINGS)
-        rings_changed = rings_after != rings_before
-        builders_changed = builders_after != builders_before
-        if rings_changed or builders_changed:
-            # Copy builders and rings (if available) to the server dir.
-            update_www_rings(rings=rings_ready)
-            if rings_ready:
-                # Trigger sync
-                cluster_sync_rings(peers_only=not rings_changed)
+            rings_after = get_rings_checksum()
+            builders_after = get_builders_checksum()
+
+            rings_path = os.path.join(SWIFT_CONF_DIR, '*.%s' %
+                                      (SWIFT_RING_EXT))
+            rings_ready = len(glob.glob(rings_path)) == len(SWIFT_RINGS)
+            rings_changed = rings_after != rings_before
+            builders_changed = builders_after != builders_before
+            if rings_changed or builders_changed:
+                # Copy builders and rings (if available) to the server dir.
+                update_www_rings(rings=rings_ready)
+                if rings_ready:
+                    # Trigger sync
+                    cluster_sync_rings(peers_only=not rings_changed)
+                else:
+                    cluster_sync_rings(builders_only=True)
+                    log("Rings not ready for sync - skipping", level=DEBUG)
             else:
-                cluster_sync_rings(builders_only=True)
-                log("Rings not ready for sync - skipping", level=DEBUG)
-        else:
-            log("Rings/builders unchanged so skipping sync", level=DEBUG)
+                log("Rings/builders unchanged so skipping sync", level=DEBUG)
 
-        return ret
+            return ret
+        finally:
+            RING_SYNC_SEMAPHORE.release()
 
     return _inner_sync_builders_and_rings_if_changed
 
