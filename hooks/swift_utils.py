@@ -741,27 +741,29 @@ def rings_synced():
 def get_broker_token():
     """
     """
-    try:
-        r_unit = remote_unit()
-    except KeyError:
-        r_unit = None
-
-    if r_unit not in cluster_units():
-        l_unit = local_unit()
-        log("Remote unit '%s' not a cluster peer - using loopback (%s)" %
-            (r_unit, l_unit), level=DEBUG)
-        r_unit = l_unit
-    elif not r_unit:
-        r_unit = local_unit()
-        log("No remote unit available - using loopback (%s)" % (r_unit),
-            level=DEBUG)
-
-    log("Checking broker token from unit=%s" % (r_unit))
+    responses = []
+    broker_tokens = []
+    ack_key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK
+    broker_key = 'builder-broker'
     for rid in relation_ids('cluster'):
-        response = relation_get(rid=rid, unit=r_unit)
+        s = relation_get(rid=rid, unit=local_unit)
+        if s.get(broker_key, None):
+            broker_tokens.append(s['token'])
 
-    key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK
-    return response.get(key, None)
+        for unit in related_units(rid):
+            responses.append(relation_get(attribute=ack_key, rid=rid,
+                                          unit=unit))
+
+    if not all_responses_equal(responses, ack_key):
+        log("Not all ack tokens equal - %s" % (responses), level=DEBUG)
+        return None
+
+    if not all(broker_tokens) or len(set(broker_tokens)) != 1:
+        log("Not all builder tokens equal - %s" % (responses), level=DEBUG)
+        return None
+
+    token = broker_tokens[0]
+    return token
 
 
 def sync_builders_and_rings_if_changed(f):
