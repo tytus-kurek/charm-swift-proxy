@@ -21,6 +21,8 @@ def init_ring_paths(tmpdir):
 
 class SwiftUtilsTestCase(unittest.TestCase):
 
+    @mock.patch('swift_utils.get_broker_token')
+    @mock.patch('swift_utils.update_www_rings')
     @mock.patch('swift_utils.get_builders_checksum')
     @mock.patch('swift_utils.get_rings_checksum')
     @mock.patch('swift_utils.balance_rings')
@@ -34,7 +36,9 @@ class SwiftUtilsTestCase(unittest.TestCase):
                           mock_is_elected_leader, mock_path_exists,
                           mock_log, mock_balance_rings,
                           mock_get_rings_checksum,
-                          mock_get_builders_checksum):
+                          mock_get_builders_checksum, mock_update_www_rings,
+                          mock_get_broker_token):
+        mock_get_broker_token.return_value = "token1"
 
         # Make sure same is returned for both so that we don't try to sync
         mock_get_rings_checksum.return_value = None
@@ -72,6 +76,7 @@ class SwiftUtilsTestCase(unittest.TestCase):
         self.assertTrue(mock_set_min_hours.called)
         self.assertTrue(mock_balance_rings.called)
 
+    @mock.patch('swift_utils.get_broker_token')
     @mock.patch('swift_utils.balance_rings')
     @mock.patch('swift_utils.log')
     @mock.patch('swift_utils.is_elected_leader')
@@ -83,7 +88,9 @@ class SwiftUtilsTestCase(unittest.TestCase):
                                                 mock_config,
                                                 mock_is_elected_leader,
                                                 mock_log,
-                                                mock_balance_rings):
+                                                mock_balance_rings,
+                                                mock_get_broker_token):
+        mock_get_broker_token.return_value = "token1"
 
         @swift_utils.sync_builders_and_rings_if_changed
         def mock_balance():
@@ -122,16 +129,20 @@ class SwiftUtilsTestCase(unittest.TestCase):
         rpc = swift_utils.SwiftProxyClusterRPC()
         rq = rpc.stop_proxy_request(peers_only=True)
         self.assertEqual({'trigger': 'test-uuid',
+                          'broker-token': None,
                           'builder-broker': None,
                           'peers-only': True,
+                          'leader-changed-notification': None,
                           'stop-proxy-service': 'test-uuid',
                           'stop-proxy-service-ack': None,
                           'sync-only-builders': None}, rq)
 
         rq = rpc.stop_proxy_request()
         self.assertEqual({'trigger': 'test-uuid',
+                          'broker-token': None,
                           'builder-broker': None,
                           'peers-only': None,
+                          'leader-changed-notification': None,
                           'stop-proxy-service': 'test-uuid',
                           'stop-proxy-service-ack': None,
                           'sync-only-builders': None}, rq)
@@ -142,20 +153,38 @@ class SwiftUtilsTestCase(unittest.TestCase):
         rpc = swift_utils.SwiftProxyClusterRPC()
         rq = rpc.stop_proxy_ack(echo_token='token1', echo_peers_only='1')
         self.assertEqual({'trigger': 'token2',
+                          'broker-token': None,
                           'builder-broker': None,
                           'peers-only': '1',
+                          'leader-changed-notification': None,
                           'stop-proxy-service': None,
                           'stop-proxy-service-ack': 'token1',
                           'sync-only-builders': None}, rq)
 
     @mock.patch('swift_utils.uuid')
     def test_cluster_rpc_sync_request(self, mock_uuid):
-        mock_uuid.uuid4.return_value = 'token1'
+        mock_uuid.uuid4.return_value = 'token2'
         rpc = swift_utils.SwiftProxyClusterRPC()
-        rq = rpc.sync_rings_request('HostA')
-        self.assertEqual({'trigger': 'token1',
+        rq = rpc.sync_rings_request('HostA', 'token1')
+        self.assertEqual({'trigger': 'token2',
+                          'broker-token': 'token1',
                           'builder-broker': 'HostA',
                           'peers-only': None,
+                          'leader-changed-notification': None,
+                          'stop-proxy-service': None,
+                          'stop-proxy-service-ack': None,
+                          'sync-only-builders': None}, rq)
+
+    @mock.patch('swift_utils.uuid')
+    def test_cluster_rpc_notify_leader_changed(self, mock_uuid):
+        mock_uuid.uuid4.return_value = 'token1'
+        rpc = swift_utils.SwiftProxyClusterRPC()
+        rq = rpc.notify_leader_changed()
+        self.assertEqual({'trigger': 'token1',
+                          'broker-token': None,
+                          'builder-broker': None,
+                          'peers-only': None,
+                          'leader-changed-notification': 'token1',
                           'stop-proxy-service': None,
                           'stop-proxy-service-ack': None,
                           'sync-only-builders': None}, rq)
