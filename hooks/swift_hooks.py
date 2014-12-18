@@ -37,6 +37,7 @@ from charmhelpers.contrib.hahelpers.cluster import (
 from charmhelpers.core.hookenv import (
     config,
     local_unit,
+    remote_unit,
     unit_get,
     relation_set,
     relation_ids,
@@ -46,6 +47,7 @@ from charmhelpers.core.hookenv import (
     DEBUG,
     INFO,
     WARNING,
+    ERROR,
     Hooks, UnregisteredHookError,
     open_port,
 )
@@ -283,10 +285,23 @@ def cluster_leader_actions():
 
     NOTE: must be called by leader from cluster relation hook.
     """
+    log("Cluster changed by unit=%s (local is leader)" % (remote_unit()),
+        level=DEBUG)
+
     # If we have received an ack, check other units
-    settings = relation_get()
+    settings = relation_get() or {}
     ack_key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK
-    if settings and ack_key in settings:
+
+    # Protect against leader changing mid-sync
+    if settings.get(SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC):
+        log("Sync request received yet this is leader unit. This would "
+            "indicate that the leader has changed mid-sync - stopping proxy "
+            "and notifying peers", level=ERROR)
+        service_stop('swift-proxy')
+        SwiftProxyClusterRPC().notify_leader_changed()
+        return
+    elif ack_key in settings:
+        token = settings[ack_key]
         # Find out if all peer units have been stopped.
         responses = []
         for rid in relation_ids('cluster'):
@@ -305,16 +320,10 @@ def cluster_leader_actions():
                                                        default=0))
             log("Syncing rings and builders (peers-only=%s)" % (peers_only),
                 level=DEBUG)
-            broadcast_rings_available(storage=not peers_only)
+            broadcast_rings_available(token, storage=not peers_only)
         else:
             log("Not all peer apis stopped - skipping sync until all peers "
                 "ready (got %s)" % (responses), level=INFO)
-    else:
-        # Otherwise it might be a new swift-proxy unit so tell it to sync
-        # rings. Note that broker info may already be present in the cluster
-        # relation so don't use a trigger otherwise the hook will re-fire on
-        # all peers.
-        broadcast_rings_available(storage=False, use_trigger=False)
 
     CONFIGS.write_all()
 
@@ -324,7 +333,9 @@ def cluster_non_leader_actions():
 
     NOTE: must be called by non-leader from cluster relation hook.
     """
-    settings = relation_get()
+    log("Cluster changed by unit=%s (local is non-leader)" % (remote_unit()),
+        level=DEBUG)
+    settings = relation_get() or {}
 
     # Check whether we have been requested to stop proxy service
     rq_key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC
@@ -344,6 +355,7 @@ def cluster_non_leader_actions():
     broker = settings.get('builder-broker', None)
     if not broker:
         log("No update available", level=DEBUG)
+        service_start('swift-proxy')
         return
 
     builders_only = int(settings.get('sync-only-builders', 0))
@@ -370,6 +382,16 @@ def cluster_non_leader_actions():
             'cluster-relation-departed')
 @restart_on_change(restart_map())
 def cluster_changed():
+    key = SwiftProxyClusterRPC.KEY_NOTIFY_LEADER_CHANGED
+    leader_changed = relation_get(attribute=key)
+    if leader_changed:
+        log("Leader changed notification received from peer unit. Since this "
+            "most likely occurred during a ring sync proxies will be "
+            "disabled until the leader is restored and a fresh sync request "
+            "is set out", level=WARNING)
+        service_stop("swift-proxy")
+        return
+
     if is_elected_leader(SWIFT_HA_RES):
         cluster_leader_actions()
     else:
