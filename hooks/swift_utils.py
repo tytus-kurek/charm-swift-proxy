@@ -754,14 +754,15 @@ def sync_builders_and_rings_if_changed(f):
             if rings_changed or builders_changed:
                 # Copy builders and rings (if available) to the server dir.
                 update_www_rings(rings=rings_ready)
-                if rings_ready:
+                if rings_changed and rings_ready:
                     # Trigger sync
                     cluster_sync_rings(peers_only=not rings_changed)
                 else:
-                    cluster_sync_rings(builders_only=True)
-                    log("Rings not ready for sync - skipping", level=DEBUG)
+                    cluster_sync_rings(peers_only=True, builders_only=True)
+                    log("Rings not ready for sync - syncing builders",
+                        level=DEBUG)
             else:
-                log("Rings/builders unchanged so skipping sync", level=DEBUG)
+                log("Rings/builders unchanged - skipping sync", level=DEBUG)
 
             return ret
         finally:
@@ -915,13 +916,18 @@ def cluster_sync_rings(peers_only=False, builders_only=False):
         # Only the leader can do this.
         return
 
-    # If we have no peer units just go ahead and broadcast to storage
-    # relations. If we have been instructed to only broadcast to peers, do
-    # nothing.
     if not peer_units():
+        # If we have no peer units just go ahead and broadcast to storage
+        # relations. If we have been instructed to only broadcast to peers this
+        # should do nothing.
         broker_token = get_broker_token()
         broadcast_rings_available(broker_token, peers=False,
-                                  storage=not peers_only,
+                                  storage=not peers_only)
+        return
+    elif builders_only:
+        # No need to stop proxies if only syncing builders between peers.
+        broker_token = get_broker_token()
+        broadcast_rings_available(broker_token, storage=False,
                                   builders_only=builders_only)
         return
 
