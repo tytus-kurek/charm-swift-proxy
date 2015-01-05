@@ -368,7 +368,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
 
         expected = {
             'DEFAULT': {
-                'bind_port': '8080',
+                'bind_port': '8070',
                 'workers': '0',
                 'user': 'swift'
             },
@@ -461,7 +461,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
 
         expected = {
             'DEFAULT': {
-                'bind_port': '8080',
+                'bind_port': '8070',
                 'workers': '0',
                 'user': 'swift'
             },
@@ -546,7 +546,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
 
         expected = {
             'DEFAULT': {
-                'bind_port': '8080',
+                'bind_port': '8070',
                 'workers': '0',
                 'user': 'swift'
             },
@@ -631,7 +631,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
 
         expected = {
             'DEFAULT': {
-                'bind_port': '8080',
+                'bind_port': '8070',
                 'workers': '0',
                 'user': 'swift'
             },
@@ -712,7 +712,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
 
         expected = {
             'DEFAULT': {
-                'bind_port': '8080',
+                'bind_port': '8070',
                 'workers': '0',
                 'user': 'swift'
             },
