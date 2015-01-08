@@ -38,7 +38,8 @@ class HAProxyContext(OSContextGenerator):
         Also used to extend cinder.conf context with correct api_listening_port
         """
         haproxy_port = config('bind-port')
-        api_port = determine_apache_port(config('bind-port'))
+        api_port = determine_apache_port(config('bind-port'),
+                                         singlenode_mode=True)
 
         ctxt = {
             'service_ports': {'swift_api': [haproxy_port, api_port]},
@@ -92,7 +93,7 @@ class SwiftIdentityContext(OSContextGenerator):
         ctxt = {
             'proxy_ip': proxy_ip,
             'memcached_ip': memcached_ip,
-            'bind_port': determine_api_port(bind_port),
+            'bind_port': determine_api_port(bind_port, singlenode_mode=True),
             'workers': workers,
             'operator_roles': config('operator-roles'),
             'delay_auth_decision': config('delay-auth-decision'),
