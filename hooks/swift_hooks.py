@@ -8,6 +8,7 @@ from swift_utils import (
     SwiftProxyCharmException,
     register_configs,
     restart_map,
+    services,
     determine_packages,
     ensure_swift_dir,
     SWIFT_RINGS,
@@ -43,6 +44,7 @@ from charmhelpers.core.hookenv import (
     relation_ids,
     relation_get,
     related_units,
+    relations_of_type,
     log,
     DEBUG,
     INFO,
@@ -77,6 +79,8 @@ from charmhelpers.contrib.network.ip import (
     format_ipv6_addr,
 )
 from charmhelpers.contrib.openstack.context import ADDRESS_TYPES
+
+from charmhelpers.contrib.charmsupport.nrpe import NRPE
 
 extra_pkgs = [
     "haproxy",
@@ -122,6 +126,7 @@ def config_changed():
 
     configure_https()
     open_port(config('bind-port'))
+    update_nrpe_config()
 
     # Determine whether or not we should do an upgrade.
     if openstack.openstack_upgrade_available('python-swift'):
@@ -486,6 +491,57 @@ def configure_https():
                 'OPENSTACK_PORT_API': config('bind-port'),
                 'OPENSTACK_PORT_MEMCACHED': 11211}
     openstack.save_script_rc(**env_vars)
+
+
+@hooks.hook('nrpe-external-master-relation-joined',
+            'nrpe-external-master-relation-changed')
+def update_nrpe_config():
+    apt_install('python-dbus')
+    # Find out if nrpe set nagios_hostname
+    hostname = None
+    host_context = None
+    for rel in relations_of_type('nrpe-external-master'):
+        if 'nagios_hostname' in rel:
+            hostname = rel['nagios_hostname']
+            host_context = rel['nagios_host_context']
+            break
+    nrpe = NRPE(hostname=hostname)
+
+    if host_context:
+        current_unit = "%s:%s" % (host_context, local_unit())
+    else:
+        current_unit = local_unit()
+
+    services_to_monitor = services()
+    for service in services_to_monitor:
+        upstart_init = '/etc/init/%s.conf' % service
+        sysv_init = '/etc/init.d/%s' % service
+
+        if os.path.exists(upstart_init):
+            nrpe.add_check(
+                shortname=service,
+                description='process check {%s}' % current_unit,
+                check_cmd='check_upstart_job %s' % service,
+            )
+        elif os.path.exists(sysv_init):
+            cronpath = '/etc/cron.d/nagios-service-check-%s' % service
+            cron_entry = ('*/5 * * * * root '
+                          '/usr/local/lib/nagios/plugins/check_exit_status.pl '
+                          '-s /etc/init.d/%s status > '
+                          '/var/lib/nagios/service-check-%s.txt\n' % (service,
+                                                                      service)
+                          )
+            f = open(cronpath, 'w')
+            f.write(cron_entry)
+            f.close()
+            nrpe.add_check(
+                shortname=service,
+                description='process check {%s}' % current_unit,
+                check_cmd='check_status_file.py -f '
+                          '/var/lib/nagios/service-check-%s.txt' % service,
+            )
+
+    nrpe.write()
 
 
 def main():
