@@ -142,7 +142,6 @@ def config_changed():
         keystone_joined(relid=r_id)
 
 
-
 @hooks.hook('identity-service-relation-joined')
 def keystone_joined(relid=None):
     if not is_elected_leader(SWIFT_HA_RES):
