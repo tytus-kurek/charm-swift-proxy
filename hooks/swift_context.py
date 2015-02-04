@@ -80,7 +80,7 @@ class SwiftIdentityContext(OSContextGenerator):
     def __call__(self):
         bind_port = config('bind-port')
         workers = config('workers')
-        if workers == '0':
+        if workers == 0:
             import multiprocessing
             workers = multiprocessing.cpu_count()
         if config('prefer-ipv6'):
