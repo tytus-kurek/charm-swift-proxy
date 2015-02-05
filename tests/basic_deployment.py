@@ -370,7 +370,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         expected = {
             'DEFAULT': {
                 'bind_port': '8070',
-                'workers': multiprocessing.cpu_count(),
+                'workers': str(multiprocessing.cpu_count()),
                 'user': 'swift'
             },
             'pipeline:main': {
@@ -463,7 +463,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         expected = {
             'DEFAULT': {
                 'bind_port': '8070',
-                'workers': multiprocessing.cpu_count(),
+                'workers': str(multiprocessing.cpu_count()),
                 'user': 'swift'
             },
             'pipeline:main': {
@@ -548,7 +548,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         expected = {
             'DEFAULT': {
                 'bind_port': '8070',
-                'workers': multiprocessing.cpu_count(),
+                'workers': str(multiprocessing.cpu_count()),
                 'user': 'swift'
             },
             'pipeline:main': {
@@ -633,7 +633,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         expected = {
             'DEFAULT': {
                 'bind_port': '8070',
-                'workers': multiprocessing.cpu_count(),
+                'workers': str(multiprocessing.cpu_count()),
                 'user': 'swift'
             },
             'pipeline:main': {
@@ -714,7 +714,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         expected = {
             'DEFAULT': {
                 'bind_port': '8070',
-                'workers': multiprocessing.cpu_count(),
+                'workers': str(multiprocessing.cpu_count()),
                 'user': 'swift'
             },
             'pipeline:main': {
