@@ -62,6 +62,7 @@ options:
       this charm's README for details.
   # User provided SSL cert and key
   ssl_cert:
+    default:
     type: string
     description: |
       Base64 encoded SSL certificate to install and use for API ports.
@@ -74,6 +75,7 @@ options:
       any certficiate and key issued by Keystone (if it is configured to
       do so).
   ssl_key:
+    default:
     type: string
     description: |
       Base64 encoded SSL key to use with certificate specified as ssl_cert.
@@ -116,6 +118,7 @@ options:
       while allowing for a longer timeout for non-recoverable requests (PUTs).
   # Manual Keystone configuration.
   keystone-auth-host:
+    default:
     type: string
     description: Keystone authentication host
   keystone-auth-port:
@@ -131,6 +134,7 @@ options:
     type: string
     description: Keystone admin tenant name
   keystone-admin-user:
+    default:
     type: string
     description: Keystone admin username
   keystone-admin-password:
@@ -138,9 +142,11 @@ options:
     description: Keystone admin password
   # HA configuration settings
   swift-hash:
+    default:
     type: string
     description: Hash to use across all swift-proxy servers - don't loose
   vip:
+    default:
     type: string
     description: |
       Virtual IP(s) to use to front API services in HA configuration.
@@ -162,6 +168,7 @@ options:
   # Network configuration options
   # by default all access is over 'private-address'
   os-admin-network:
+    default:
     type: string
     description: |
       The IP address and netmask of the OpenStack Admin network (e.g.,
@@ -169,6 +176,7 @@ options:
       .
       This network will be used for admin endpoints.
   os-internal-network:
+    default:
     type: string
     description: |
       The IP address and netmask of the OpenStack Internal network (e.g.,
@@ -176,6 +184,7 @@ options:
       .
       This network will be used for internal endpoints.
   os-public-network:
+    default:
     type: string
     description: |
       The IP address and netmask of the OpenStack Public network (e.g.,
