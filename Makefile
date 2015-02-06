@@ -15,7 +15,7 @@ test:
 	# coreycb note: The -v should only be temporary until Amulet sends
 	# raise_status() messages to stderr:
 	#   https://bugs.launchpad.net/amulet/+bug/1320357
-	@juju test -v -p AMULET_HTTP_PROXY --timeout 900 \
+	@juju test -v -p AMULET_HTTP_PROXY --timeout 1800 \
         00-setup 14-basic-precise-icehouse 15-basic-trusty-icehouse
 
 bin/charm_helpers_sync.py:
