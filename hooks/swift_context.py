@@ -106,7 +106,9 @@ class SwiftIdentityContext(OSContextGenerator):
         # TODO(hopem): refactor this context handler to use charm-helpers
         #              code.
         _ctxt = IdentityServiceContext(service='swift', service_user='swift')()
-        ctxt['signing_dir'] = _ctxt['signing_dir']
+        signing_dir = _ctxt.get('signing_dir')
+        if signing_dir:
+            ctxt['signing_dir'] = signing_dir
 
         ctxt['ssl'] = False
 
