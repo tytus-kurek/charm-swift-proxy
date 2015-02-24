@@ -2,7 +2,6 @@
 
 import amulet
 import swiftclient
-import multiprocessing
 
 from charmhelpers.contrib.openstack.amulet.deployment import (
     OpenStackAmuletDeployment
@@ -370,7 +369,6 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         expected = {
             'DEFAULT': {
                 'bind_port': '8070',
-                'workers': str(multiprocessing.cpu_count()),
                 'user': 'swift'
             },
             'pipeline:main': {
@@ -463,7 +461,6 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         expected = {
             'DEFAULT': {
                 'bind_port': '8070',
-                'workers': str(multiprocessing.cpu_count()),
                 'user': 'swift'
             },
             'pipeline:main': {
@@ -548,7 +545,6 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         expected = {
             'DEFAULT': {
                 'bind_port': '8070',
-                'workers': str(multiprocessing.cpu_count()),
                 'user': 'swift'
             },
             'pipeline:main': {
@@ -633,7 +629,6 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         expected = {
             'DEFAULT': {
                 'bind_port': '8070',
-                'workers': str(multiprocessing.cpu_count()),
                 'user': 'swift'
             },
             'pipeline:main': {
@@ -714,7 +709,6 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         expected = {
             'DEFAULT': {
                 'bind_port': '8070',
-                'workers': str(multiprocessing.cpu_count()),
                 'user': 'swift'
             },
             'pipeline:main': {
