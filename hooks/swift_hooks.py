@@ -405,7 +405,7 @@ def cluster_changed():
 @hooks.hook('ha-relation-changed')
 def ha_relation_changed():
     clustered = relation_get('clustered')
-    if clustered and is_crm_leader(SWIFT_HA_RES):
+    if clustered:
         log("Cluster configured, notifying other services and updating "
             "keystone endpoint configuration", level=INFO)
         # Tell all related services to start using
