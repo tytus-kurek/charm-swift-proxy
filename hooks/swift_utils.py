@@ -960,11 +960,7 @@ def notify_storage_rings_available():
             "non-leader - skipping", level=WARNING)
         return
 
-    if is_clustered():
-        hostname = config('vip')
-    else:
-        hostname = get_hostaddr()
-
+    hostname = get_hostaddr()
     hostname = format_ipv6_addr(hostname) or hostname
     path = os.path.basename(get_www_dir())
     rings_url = 'http://%s/%s' % (hostname, path)
