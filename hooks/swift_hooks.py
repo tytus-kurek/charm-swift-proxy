@@ -382,8 +382,7 @@ def cluster_non_leader_actions():
             "before starting proxy", level=INFO)
 
 
-@hooks.hook('cluster-relation-changed',
-            'cluster-relation-departed')
+@hooks.hook('cluster-relation-changed')
 @restart_on_change(restart_map())
 def cluster_changed():
     key = SwiftProxyClusterRPC.KEY_NOTIFY_LEADER_CHANGED
