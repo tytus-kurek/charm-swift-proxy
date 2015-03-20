@@ -29,7 +29,6 @@ from charmhelpers.contrib.openstack.utils import (
 )
 from charmhelpers.contrib.hahelpers.cluster import (
     is_elected_leader,
-    is_clustered,
     peer_units,
 )
 from charmhelpers.core.hookenv import (
@@ -870,11 +869,7 @@ def notify_peers_builders_available(broker_token, builders_only=False):
             "skipping", level=WARNING)
         return
 
-    if is_clustered():
-        hostname = config('vip')
-    else:
-        hostname = get_hostaddr()
-
+    hostname = get_hostaddr()
     hostname = format_ipv6_addr(hostname) or hostname
     # Notify peers that builders are available
     log("Notifying peer(s) that rings are ready for sync.", level=INFO)
@@ -960,11 +955,7 @@ def notify_storage_rings_available():
             "non-leader - skipping", level=WARNING)
         return
 
-    if is_clustered():
-        hostname = config('vip')
-    else:
-        hostname = get_hostaddr()
-
+    hostname = get_hostaddr()
     hostname = format_ipv6_addr(hostname) or hostname
     path = os.path.basename(get_www_dir())
     rings_url = 'http://%s/%s' % (hostname, path)
