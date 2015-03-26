@@ -248,7 +248,6 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             'auth_port': '35357',
             'auth_protocol': 'http',
             'private-address': u.valid_ip,
-            'https_keystone': 'False',
             'auth_host': u.valid_ip,
             'service_username': 'swift',
             'service_tenant_id': u.not_null,
@@ -420,7 +419,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                 'admin_user': keystone_relation['service_username'],
                 'admin_password': keystone_relation['service_password'],
                 'delay_auth_decision': 'true',
-                'signing_dir': '/etc/swift',
+                'signing_dir': '/var/cache/swift',
                 'cache': 'swift.cache'
             },
             'filter:s3token': {
@@ -503,7 +502,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                 'admin_user': keystone_relation['service_username'],
                 'admin_password': keystone_relation['service_password'],
                 'delay_auth_decision': 'true',
-                'signing_dir': '/etc/swift',
+                'signing_dir': '/var/cache/swift',
                 'cache': 'swift.cache'
             },
             'filter:s3token': {
@@ -588,7 +587,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                 'admin_user': keystone_relation['service_username'],
                 'admin_password': keystone_relation['service_password'],
                 'delay_auth_decision': 'true',
-                'signing_dir': '/etc/swift'
+                'signing_dir': '/var/cache/swift'
             },
             'filter:s3token': {
                 'paste.filter_factory': 'keystone.middleware.s3_token:'

@@ -14,6 +14,7 @@ from charmhelpers.contrib.openstack.context import (
     OSContextGenerator,
     ApacheSSLContext as SSLContext,
     context_complete,
+    IdentityServiceContext,
 )
 from charmhelpers.contrib.hahelpers.cluster import (
     determine_api_port,
@@ -100,6 +101,14 @@ class SwiftIdentityContext(OSContextGenerator):
             'node_timeout': config('node-timeout'),
             'recoverable_node_timeout': config('recoverable-node-timeout'),
         }
+
+        # Instead of duplicating code lets use charm-helpers to set signing_dir
+        # TODO(hopem): refactor this context handler to use charm-helpers
+        #              code.
+        _ctxt = IdentityServiceContext(service='swift', service_user='swift')()
+        signing_dir = _ctxt.get('signing_dir')
+        if signing_dir:
+            ctxt['signing_dir'] = signing_dir
 
         ctxt['ssl'] = False
 
