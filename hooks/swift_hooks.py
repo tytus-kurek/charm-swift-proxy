@@ -33,7 +33,6 @@ from swift_utils import (
 import charmhelpers.contrib.openstack.utils as openstack
 from charmhelpers.contrib.hahelpers.cluster import (
     is_elected_leader,
-    is_crm_leader
 )
 from charmhelpers.core.hookenv import (
     config,
