@@ -2,7 +2,12 @@
 
 import os
 import sys
-import subprocess
+
+from subprocess import (
+    call,
+    check_call,
+    CalledProcessError,
+)
 
 from swift_utils import (
     SwiftProxyCharmException,
@@ -367,7 +372,7 @@ def cluster_non_leader_actions():
     try:
         sync_proxy_rings('http://%s/%s' % (broker, path),
                          rings=not builders_only)
-    except subprocess.CalledProcessError:
+    except CalledProcessError:
         log("Ring builder sync failed, builders not yet available - "
             "leader not ready?", level=WARNING)
         return None
@@ -474,14 +479,21 @@ def configure_https():
     CONFIGS.write_all()
     if 'https' in CONFIGS.complete_contexts():
         cmd = ['a2ensite', 'openstack_https_frontend']
-        subprocess.check_call(cmd)
+        check_call(cmd)
     else:
         cmd = ['a2dissite', 'openstack_https_frontend']
-        subprocess.check_call(cmd)
+        check_call(cmd)
 
     # Apache 2.4 required enablement of configuration
     if os.path.exists('/usr/sbin/a2enconf'):
-        subprocess.check_call(['a2enconf', 'swift-rings'])
+        check_call(['a2enconf', 'swift-rings'])
+
+    # TODO: improve this by checking if local CN certs are available
+    # first then checking reload status (see LP #1433114).
+    try:
+        check_call(['service', 'apache2', 'reload'])
+    except CalledProcessError:
+        call(['service', 'apache2', 'restart'])
 
     for rid in relation_ids('identity-service'):
         keystone_joined(relid=rid)
