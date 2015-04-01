@@ -141,6 +141,8 @@ class SwiftIdentityContext(OSContextGenerator):
                                                      unit, relid) or 'http',
                     'keystone_host': relation_get('auth_host',
                                                   unit, relid),
+                    'service_host': relation_get('service_host',
+                                                 unit, relid),
                     'auth_port': relation_get('auth_port',
                                               unit, relid),
                     'service_user': relation_get('service_username',
