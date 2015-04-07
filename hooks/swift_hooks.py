@@ -83,6 +83,11 @@ from charmhelpers.contrib.network.ip import (
     format_ipv6_addr,
 )
 from charmhelpers.contrib.openstack.context import ADDRESS_TYPES
+from charmhelpers.contrib.peerstorage import (
+    peer_echo,
+    peer_store,
+    peer_retrieve,
+)
 
 from charmhelpers.contrib.charmsupport import nrpe
 
@@ -148,22 +153,28 @@ def config_changed():
 
 @hooks.hook('identity-service-relation-joined')
 def keystone_joined(relid=None):
-    if not is_elected_leader(SWIFT_HA_RES):
-        return
-
     port = config('bind-port')
-    admin_url = '%s:%s' % (canonical_url(CONFIGS, ADMIN), port)
-    internal_url = '%s:%s/v1/AUTH_$(tenant_id)s' % \
-        (canonical_url(CONFIGS, INTERNAL), port)
-    public_url = '%s:%s/v1/AUTH_$(tenant_id)s' % \
-        (canonical_url(CONFIGS, PUBLIC), port)
-    relation_set(service='swift',
-                 region=config('region'),
-                 public_url=public_url,
-                 internal_url=internal_url,
-                 admin_url=admin_url,
-                 requested_roles=config('operator-roles'),
-                 relation_id=relid)
+    if not is_elected_leader(SWIFT_HA_RES):
+        settings = peer_retrieve()
+        admin_url = settings.get('admin_url')
+        internal_url = settings.get('internal_url')
+        public_url = settings.get('public_url')
+    else:
+        admin_url = '%s:%s' % (canonical_url(CONFIGS, ADMIN), port)
+        internal_url = ('%s:%s/v1/AUTH_$(tenant_id)s' %
+                        (canonical_url(CONFIGS, INTERNAL), port))
+        public_url = ('%s:%s/v1/AUTH_$(tenant_id)s' %
+                      (canonical_url(CONFIGS, PUBLIC), port))
+        peer_store('admin_url', admin_url)
+        peer_store('internal_url', internal_url)
+        peer_store('public_url', public_url)
+
+    region = config('region')
+    roles = config('operator-roles')
+
+    relation_set(service='swift', region=region, public_url=public_url,
+                 internal_url=internal_url, admin_url=admin_url,
+                 requested_roles=roles, relation_id=relid)
 
 
 @hooks.hook('identity-service-relation-changed')
@@ -391,6 +402,8 @@ def cluster_non_leader_actions():
             'cluster-relation-departed')
 @restart_on_change(restart_map())
 def cluster_changed():
+    peer_echo(includes=['admin_url', 'internal_url', 'public_url'])
+
     key = SwiftProxyClusterRPC.KEY_NOTIFY_LEADER_CHANGED
     leader_changed = relation_get(attribute=key)
     if leader_changed:
