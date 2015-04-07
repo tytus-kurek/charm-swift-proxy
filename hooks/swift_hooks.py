@@ -155,7 +155,7 @@ def config_changed():
 def keystone_joined(relid=None):
     port = config('bind-port')
     if not is_elected_leader(SWIFT_HA_RES):
-        settings = peer_retrieve()
+        settings = peer_retrieve(key=None)
         admin_url = settings.get('admin_url')
         internal_url = settings.get('internal_url')
         public_url = settings.get('public_url')
