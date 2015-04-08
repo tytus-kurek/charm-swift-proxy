@@ -83,12 +83,6 @@ from charmhelpers.contrib.network.ip import (
     format_ipv6_addr,
 )
 from charmhelpers.contrib.openstack.context import ADDRESS_TYPES
-from charmhelpers.contrib.peerstorage import (
-    peer_echo,
-    peer_store,
-    peer_retrieve,
-)
-
 from charmhelpers.contrib.charmsupport import nrpe
 
 extra_pkgs = [
@@ -154,21 +148,11 @@ def config_changed():
 @hooks.hook('identity-service-relation-joined')
 def keystone_joined(relid=None):
     port = config('bind-port')
-    if not is_elected_leader(SWIFT_HA_RES):
-        settings = peer_retrieve(key=None)
-        admin_url = settings.get('admin_url')
-        internal_url = settings.get('internal_url')
-        public_url = settings.get('public_url')
-    else:
-        admin_url = '%s:%s' % (canonical_url(CONFIGS, ADMIN), port)
-        internal_url = ('%s:%s/v1/AUTH_$(tenant_id)s' %
-                        (canonical_url(CONFIGS, INTERNAL), port))
-        public_url = ('%s:%s/v1/AUTH_$(tenant_id)s' %
-                      (canonical_url(CONFIGS, PUBLIC), port))
-        peer_store('admin_url', admin_url)
-        peer_store('internal_url', internal_url)
-        peer_store('public_url', public_url)
-
+    admin_url = '%s:%s' % (canonical_url(CONFIGS, ADMIN), port)
+    internal_url = ('%s:%s/v1/AUTH_$(tenant_id)s' %
+                    (canonical_url(CONFIGS, INTERNAL), port))
+    public_url = ('%s:%s/v1/AUTH_$(tenant_id)s' %
+                  (canonical_url(CONFIGS, PUBLIC), port))
     region = config('region')
     roles = config('operator-roles')
 
@@ -402,8 +386,6 @@ def cluster_non_leader_actions():
             'cluster-relation-departed')
 @restart_on_change(restart_map())
 def cluster_changed():
-    peer_echo(includes=['admin_url', 'internal_url', 'public_url'])
-
     key = SwiftProxyClusterRPC.KEY_NOTIFY_LEADER_CHANGED
     leader_changed = relation_get(attribute=key)
     if leader_changed:
