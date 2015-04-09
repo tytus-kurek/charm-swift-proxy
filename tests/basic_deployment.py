@@ -369,11 +369,6 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             'DEFAULT': {
                 'bind_port': '8070',
                 'user': 'swift',
-#                'log_name': 'swift',
-#                'log_facility': 'LOG_LOCAL0',
-#                'log_level': 'INFO',
-#                'log_address': '/dev/log',
-#                'log_headers': 'False'
             },
             'pipeline:main': {
                 'pipeline': 'gatekeeper healthcheck cache swift3 s3token '
