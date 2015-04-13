@@ -81,10 +81,6 @@ class SwiftIdentityContext(OSContextGenerator):
     def __call__(self):
         bind_port = config('bind-port')
         workers = config('workers')
-        log_name = 'swift'
-        log_facility = 'LOG_LOCAL0'
-        log_level = 'INFO'
-        log_address = '/dev/log'
         if workers == 0:
             import multiprocessing
             workers = multiprocessing.cpu_count()
@@ -108,10 +104,9 @@ class SwiftIdentityContext(OSContextGenerator):
         }
 
         if config('debug'):
-            ctxt['log_name'] = log_name
-            ctxt['log_facility'] = log_facility
-            ctxt['log_level'] = log_level
-            ctxt['log_address'] = log_address
+            ctxt['log_level'] = 'DEBUG'
+        else:
+            ctxt['log_level'] = 'INFO'
 
         # Instead of duplicating code lets use charm-helpers to set signing_dir
         # TODO(hopem): refactor this context handler to use charm-helpers
