@@ -1,0 +1,11 @@
+#!/usr/bin/python
+
+"""Amulet tests on a basic swift-proxy deployment on trusty-kilo."""
+
+from basic_deployment import SwiftProxyBasicDeployment
+
+if __name__ == '__main__':
+    deployment = SwiftProxyBasicDeployment(series='trusty',
+                                        openstack='cloud:trusty-kilo',
+                                        source='cloud:trusty-updates/kilo')
+    deployment.run_tests()
