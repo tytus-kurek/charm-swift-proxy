@@ -126,14 +126,11 @@ options:
   debug:
     default: False
     type: boolean
-    description: |
-      Set log-name, log-facility, log-level, log-address
+    description: Enable debug level logging.
   log-headers:
     default: False
     type: boolean
-    description: |
-      Enables the ability to log request headers.
-      The default is False.
+    description: Enable logging of all request headers.
   # Manual Keystone configuration.
   keystone-auth-host:
     type: string
