@@ -122,6 +122,18 @@ options:
       Timeouts from these requests can be recovered from so setting this to
       something lower than node-timeout would provide quicker error recovery
       while allowing for a longer timeout for non-recoverable requests (PUTs).
+  # Logging configuration
+  debug:
+    default: False
+    type: boolean
+    description: |
+      Set log-name, log-facility, log-level, log-address
+  log-headers:
+    default: False
+    type: boolean
+    description: |
+      Enables the ability to log request headers.
+      The default is False.
   # Manual Keystone configuration.
   keystone-auth-host:
     type: string
