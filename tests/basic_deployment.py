@@ -368,13 +368,19 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         expected = {
             'DEFAULT': {
                 'bind_port': '8070',
-                'user': 'swift'
+                'user': 'swift',
+                'log_name': 'swift',
+                'log_facility': 'LOG_LOCAL0',
+                'log_level': 'INFO',
+                'log_headers': 'False',
+                'log_address': '/dev/log'
             },
             'pipeline:main': {
-                'pipeline': 'gatekeeper healthcheck cache swift3 s3token '
-                            'container_sync bulk tempurl slo dlo formpost '
-                            'authtoken keystoneauth staticweb '
-                            'container-quotas account-quotas proxy-server'
+                'pipeline': 'gatekeeper healthcheck proxy-logging cache swift3 '
+                            's3token container_sync bulk tempurl slo dlo '
+                            'formpost authtoken keystoneauth staticweb '
+                            'container-quotas account-quotas proxy-logging '
+                            'proxy-server'
             },
             'app:proxy-server': {
                 'use': 'egg:swift#proxy',
@@ -395,6 +401,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             },
             'filter:account-quotas': {'use': 'egg:swift#account_quotas'},
             'filter:container-quotas': {'use': 'egg:swift#container_quotas'},
+            'filter:proxy-logging': {'use': 'egg:swift#proxy_logging'},
             'filter:staticweb': {'use': 'egg:swift#staticweb'},
             'filter:bulk': {'use': 'egg:swift#bulk'},
             'filter:slo': {'use': 'egg:swift#slo'},
