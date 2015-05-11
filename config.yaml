@@ -79,6 +79,12 @@ options:
     default:
     description: |
       Base64 encoded SSL key to use with certificate specified as ssl_cert.
+  ssl_ca:
+    type: string
+    default:
+    description: |
+      Base64 encoded SSL CA to use with the certificate and key provided - only
+      required if you are providing a privately signed ssl_cert and ssl_key.
   # General Swift Proxy configuration
   bind-port:
     default: 8080
@@ -116,6 +122,15 @@ options:
       Timeouts from these requests can be recovered from so setting this to
       something lower than node-timeout would provide quicker error recovery
       while allowing for a longer timeout for non-recoverable requests (PUTs).
+  # Logging configuration
+  debug:
+    default: False
+    type: boolean
+    description: Enable debug level logging.
+  log-headers:
+    default: False
+    type: boolean
+    description: Enable logging of all request headers.
   # Manual Keystone configuration.
   keystone-auth-host:
     type: string
