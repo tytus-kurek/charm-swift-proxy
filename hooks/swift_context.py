@@ -100,7 +100,13 @@ class SwiftIdentityContext(OSContextGenerator):
             'delay_auth_decision': config('delay-auth-decision'),
             'node_timeout': config('node-timeout'),
             'recoverable_node_timeout': config('recoverable-node-timeout'),
+            'log_headers': config('log-headers')
         }
+
+        if config('debug'):
+            ctxt['log_level'] = 'DEBUG'
+        else:
+            ctxt['log_level'] = 'INFO'
 
         # Instead of duplicating code lets use charm-helpers to set signing_dir
         # TODO(hopem): refactor this context handler to use charm-helpers
