@@ -207,7 +207,7 @@ options:
       192.168.0.0/24)
       .
       This network will be used for public endpoints.
-  endpoint-public-name:
+  os-public-hostname:
     type: string
     default:
     description: |
@@ -215,7 +215,7 @@ options:
       in the keystone identity provider.
       .
       This value will be used for public endpoints. For example, an
-      endpoint-public-name set to 'files.example.com' with will create
+      os-public-hostname set to 'files.example.com' with will create
       the following public endpoint for the swift-proxy.
       .
       https://files.example.com:80/swift/v1
