@@ -37,7 +37,6 @@ from swift_utils import (
 import charmhelpers.contrib.openstack.utils as openstack
 from charmhelpers.contrib.hahelpers.cluster import (
     is_elected_leader,
-    is_crm_leader
 )
 from charmhelpers.core.hookenv import (
     config,
@@ -382,8 +381,7 @@ def cluster_non_leader_actions():
             "before starting proxy", level=INFO)
 
 
-@hooks.hook('cluster-relation-changed',
-            'cluster-relation-departed')
+@hooks.hook('cluster-relation-changed')
 @restart_on_change(restart_map())
 def cluster_changed():
     key = SwiftProxyClusterRPC.KEY_NOTIFY_LEADER_CHANGED
@@ -405,7 +403,7 @@ def cluster_changed():
 @hooks.hook('ha-relation-changed')
 def ha_relation_changed():
     clustered = relation_get('clustered')
-    if clustered and is_crm_leader(SWIFT_HA_RES):
+    if clustered:
         log("Cluster configured, notifying other services and updating "
             "keystone endpoint configuration", level=INFO)
         # Tell all related services to start using
