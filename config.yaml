@@ -216,7 +216,7 @@ options:
       .
       This value will be used for public endpoints. For example, an
       os-public-hostname set to 'files.example.com' with will create
-      the following public endpoint for the swift-proxy.
+      the following public endpoint for the swift-proxy:
       .
       https://files.example.com:80/swift/v1
   prefer-ipv6:

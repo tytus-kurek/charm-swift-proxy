@@ -1,16 +1,16 @@
-import mock
+from mock import patch
 import unittest
 import uuid
 
 
-with mock.patch('charmhelpers.core.hookenv.log'):
+with patch('charmhelpers.core.hookenv.log'):
     import swift_hooks
 
 
 class SwiftHooksTestCase(unittest.TestCase):
 
-    @mock.patch("swift_hooks.relation_get")
-    @mock.patch("swift_hooks.local_unit")
+    @patch("swift_hooks.relation_get")
+    @patch("swift_hooks.local_unit")
     def test_all_peers_stopped(self, mock_local_unit, mock_relation_get):
         token1 = str(uuid.uuid4())
         token2 = str(uuid.uuid4())
@@ -37,3 +37,93 @@ class SwiftHooksTestCase(unittest.TestCase):
         responses = [{'stop-proxy-service-ack': token1},
                      {'stop-proxy-service-ack': token1}]
         self.assertFalse(swift_hooks.all_peers_stopped(responses))
+
+    @patch.object(swift_hooks, 'config')
+    @patch('charmhelpers.contrib.openstack.ip.config')
+    @patch.object(swift_hooks, 'CONFIGS')
+    @patch('charmhelpers.core.hookenv.local_unit')
+    @patch('charmhelpers.core.hookenv.service_name')
+    @patch('charmhelpers.contrib.openstack.ip.unit_get')
+    @patch('charmhelpers.contrib.openstack.ip.is_clustered')
+    @patch.object(swift_hooks, 'relation_set')
+    def test_keystone_joined(self, _relation_set, _is_clustered, _unit_get,
+                             _service_name, _local_unit, _CONFIGS, _ip_config,
+                             _config):
+        config_dict = {
+            'bind-port': '1234',
+            'region': 'RegionOne',
+            'operator-roles': 'Operator,Monitor'
+        }
+
+        def foo(key=None):
+            if key is None:
+                return config_dict
+            else:
+                return config_dict.get(key)
+
+        _config.side_effect = foo
+        _ip_config.side_effect = foo
+        _unit_get.return_value = 'swift-proxy'
+        _local_unit.return_value = 'swift-proxy/0'
+        _service_name.return_value = 'swift-proxy'
+        _is_clustered.return_value = False
+
+        swift_hooks.keystone_joined()
+
+        _relation_set.assert_called_with(
+            service='swift',
+            region='RegionOne',
+            public_url='http://swift-proxy:1234/v1/AUTH_$(tenant_id)s',
+            internal_url='http://swift-proxy:1234/v1/AUTH_$(tenant_id)s',
+            admin_url='http://swift-proxy:1234',
+            requested_roles='Operator,Monitor',
+            relation_id=None
+        )
+
+    @patch.object(swift_hooks, 'config')
+    @patch('charmhelpers.contrib.openstack.ip.config')
+    @patch.object(swift_hooks, 'CONFIGS')
+    @patch('charmhelpers.core.hookenv.local_unit')
+    @patch('charmhelpers.core.hookenv.service_name')
+    @patch('charmhelpers.contrib.openstack.ip.unit_get')
+    @patch('charmhelpers.contrib.openstack.ip.is_clustered')
+    @patch.object(swift_hooks, 'relation_set')
+    def test_keystone_joined_public_hostname(self,
+                                             _relation_set,
+                                             _is_clustered,
+                                             _unit_get,
+                                             _service_name,
+                                             _local_unit,
+                                             _CONFIGS,
+                                             _ip_config,
+                                             _config):
+        config_dict = {
+            'bind-port': '1234',
+            'region': 'RegionOne',
+            'operator-roles': 'Operator,Monitor',
+            'os-public-hostname': 'public.example.com'
+        }
+
+        def foo(key=None):
+            if key is None:
+                return config_dict
+            else:
+                return config_dict.get(key)
+
+        _config.side_effect = _ip_config.side_effect = foo
+        _unit_get.return_value = _service_name.return_value = 'swift-proxy'
+        _local_unit.return_value = 'swift-proxy/0'
+        _is_clustered.return_value = False
+
+        swift_hooks.keystone_joined()
+
+        _relation_set.assert_called_with(
+            service='swift',
+            region='RegionOne',
+            public_url=('http://public.example.com:1234/'
+                        'v1/AUTH_$(tenant_id)s'),
+            internal_url='http://swift-proxy:1234/v1/AUTH_$(tenant_id)s',
+            admin_url='http://swift-proxy:1234',
+            requested_roles='Operator,Monitor',
+            relation_id=None
+        )
