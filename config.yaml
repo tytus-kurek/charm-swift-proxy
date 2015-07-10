@@ -6,16 +6,24 @@ options:
       Repository from which to install.  May be one of the following:
       distro (default), ppa:somecustom/ppa, a deb url sources entry,
       or a supported Cloud Archive release pocket.
-      .
+
       Supported Cloud Archive sources include:
-        - cloud:precise-folsom,
-        - cloud:precise-folsom/updates
-        - cloud:precise-folsom/staging
-        - cloud:precise-folsom/proposed
-      .
-      Note that updating this setting to a source that is known to
-      provide a later version of OpenStack will trigger a software
-      upgrade.
+
+      cloud:<series>-<openstack-release>
+      cloud:<series>-<openstack-release>/updates
+      cloud:<series>-<openstack-release>/staging
+      cloud:<series>-<openstack-release>/proposed
+
+      For series=Precise we support cloud archives for openstack-release:
+         * icehouse
+
+      For series=Trusty we support cloud archives for openstack-release:
+         * juno
+         * kilo
+         * ...
+
+      NOTE: updating this setting to a source that is known to provide
+      a later version of OpenStack will trigger a software upgrade.
   region:
     default: RegionOne
     type: string
@@ -52,10 +60,10 @@ options:
     type: string
     description: |
       Which policy to use when assigning new storage nodes to zones.
-      .
+
         manual - Allow swift-storage services to request zone membership.
         auto - Assign new swift-storage units to zones automatically.
-      .
+
       The configured replica minimum must be met by an equal number of storage
       zones before the storage ring will be initially balance.  Deployment
       requirements differ based on the zone-assignment policy configured, see
@@ -213,11 +221,11 @@ options:
     description: |
       The hostname or address of the public endpoints created for swift-proxy
       in the keystone identity provider.
-      .
+
       This value will be used for public endpoints. For example, an
       os-public-hostname set to 'files.example.com' with will create
       the following public endpoint for the swift-proxy:
-      .
+
       https://files.example.com:80/swift/v1
   prefer-ipv6:
     type: boolean
@@ -226,7 +234,7 @@ options:
       If True enables IPv6 support. The charm will expect network interfaces
       to be configured with an IPv6 address. If set to False (default) IPv4
       is expected.
-      .
+
       NOTE: these charms do not currently support IPv6 privacy extension. In
       order for this charm to function correctly, the privacy extension must be
       disabled and a non-temporary address must be configured/available on
