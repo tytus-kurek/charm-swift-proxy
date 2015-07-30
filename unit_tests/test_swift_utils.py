@@ -76,6 +76,8 @@ class SwiftUtilsTestCase(unittest.TestCase):
         self.assertTrue(mock_set_min_hours.called)
         self.assertTrue(mock_balance_rings.called)
 
+    @mock.patch('swift_utils._load_builder')
+    @mock.patch('swift_utils.initialize_ring')
     @mock.patch('swift_utils.get_broker_token')
     @mock.patch('swift_utils.update_www_rings')
     @mock.patch('swift_utils.get_builders_checksum')
@@ -90,7 +92,36 @@ class SwiftUtilsTestCase(unittest.TestCase):
                                         mock_get_builders_checksum,
                                         mock_update_www_rings,
                                         mock_get_broker_token,
+                                        mock_initialize_ring,
+                                        mock_load_builder,
                                         ):
+        # To avoid the need for swift.common.ring library, mock a basic
+        # rings dictionary, keyed by path.
+        # Each ring has enough logic to hold a dictionary with a single 'devs'
+        # key, which stores the list of passed dev(s) by add_dev().
+        #
+        # If swift (actual) ring representation diverges (see _load_builder),
+        # this mock will need to be adapted.
+        mock_rings = {}
+
+        def mock_load_builder_fn(path):
+            class mock_ring(object):
+                def __init__(self, path):
+                    self.path = path
+
+                def to_dict(self):
+                    return mock_rings[self.path]
+
+                def add_dev(self, dev):
+                    mock_rings[self.path]['devs'].append(dev)
+            return mock_ring(path)
+
+        def mock_initialize_ring_fn(path, *args):
+            mock_rings.setdefault(path, {'devs': []})
+
+        mock_load_builder.side_effect = mock_load_builder_fn
+        mock_initialize_ring.side_effect = mock_initialize_ring_fn
+
         init_ring_paths(tempfile.mkdtemp())
         devices = ['sdb', 'sdc']
         node_settings = {
