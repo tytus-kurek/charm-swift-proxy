@@ -77,6 +77,44 @@ class SwiftUtilsTestCase(unittest.TestCase):
         self.assertTrue(mock_balance_rings.called)
 
     @mock.patch('swift_utils.get_broker_token')
+    @mock.patch('swift_utils.update_www_rings')
+    @mock.patch('swift_utils.get_builders_checksum')
+    @mock.patch('swift_utils.get_rings_checksum')
+    @mock.patch('swift_utils.balance_rings')
+    @mock.patch('swift_utils.log')
+    @mock.patch('swift_utils.is_elected_leader')
+    def test_update_rings_multiple_devs(self,
+                                        mock_is_elected_leader,
+                                        mock_log, mock_balance_rings,
+                                        mock_get_rings_checksum,
+                                        mock_get_builders_checksum,
+                                        mock_update_www_rings,
+                                        mock_get_broker_token,
+                                        ):
+        init_ring_paths(tempfile.mkdtemp())
+        devices = ['sdb', 'sdc']
+        node_settings = {
+            'object_port': 6000,
+            'container_port': 6001,
+            'account_port': 6002,
+            'zone': 1,
+            'ip': '1.2.3.4',
+            'devices': devices
+        }
+        for path in swift_utils.SWIFT_RINGS.itervalues():
+            swift_utils.initialize_ring(path, 8, 3, 0)
+        swift_utils.update_rings(node_settings)
+        # verify all devices added to each ring
+        for path in swift_utils.SWIFT_RINGS.itervalues():
+            self.assertEqual(
+                len(devices),
+                len(swift_utils._load_builder(path).to_dict()['devs']))
+        # try re-adding, assert add_to_ring was not called
+        with mock.patch('swift_utils.add_to_ring') as mock_add_to_ring:
+            swift_utils.update_rings(node_settings)
+            self.assertFalse(mock_add_to_ring.called)
+
+    @mock.patch('swift_utils.get_broker_token')
     @mock.patch('swift_utils.balance_rings')
     @mock.patch('swift_utils.log')
     @mock.patch('swift_utils.is_elected_leader')
