@@ -103,12 +103,14 @@ class SwiftUtilsTestCase(unittest.TestCase):
         }
         for path in swift_utils.SWIFT_RINGS.itervalues():
             swift_utils.initialize_ring(path, 8, 3, 0)
-        swift_utils.update_rings(node_settings)
+
         # verify all devices added to each ring
+        swift_utils.update_rings(node_settings)
         for path in swift_utils.SWIFT_RINGS.itervalues():
-            self.assertEqual(
-                len(devices),
-                len(swift_utils._load_builder(path).to_dict()['devs']))
+            devs = swift_utils._load_builder(path).to_dict()['devs']
+            added_devices = [dev['device'] for dev in devs]
+            self.assertEqual(devices, added_devices)
+
         # try re-adding, assert add_to_ring was not called
         with mock.patch('swift_utils.add_to_ring') as mock_add_to_ring:
             swift_utils.update_rings(node_settings)
