@@ -9,8 +9,7 @@ from charmhelpers.contrib.openstack.amulet.deployment import (
 
 from charmhelpers.contrib.openstack.amulet.utils import (
     OpenStackAmuletUtils,
-    DEBUG, # flake8: noqa
-    ERROR
+    DEBUG
 )
 
 # Use DEBUG to turn on debug logging
@@ -46,28 +45,36 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
     def _add_relations(self):
         """Add all of the relations for the services."""
         relations = {
-          'keystone:shared-db': 'mysql:shared-db',
-          'swift-proxy:identity-service': 'keystone:identity-service',
-          'swift-storage:swift-storage': 'swift-proxy:swift-storage',
-          'glance:identity-service': 'keystone:identity-service',
-          'glance:shared-db': 'mysql:shared-db',
-          'glance:object-store': 'swift-proxy:object-store'
+            'keystone:shared-db': 'mysql:shared-db',
+            'swift-proxy:identity-service': 'keystone:identity-service',
+            'swift-storage:swift-storage': 'swift-proxy:swift-storage',
+            'glance:identity-service': 'keystone:identity-service',
+            'glance:shared-db': 'mysql:shared-db',
+            'glance:object-store': 'swift-proxy:object-store'
         }
         super(SwiftProxyBasicDeployment, self)._add_relations(relations)
 
     def _configure_services(self):
         """Configure all of the services."""
-        keystone_config = {'admin-password': 'openstack',
-                           'admin-token': 'ubuntutesting'}
-        swift_proxy_config = {'zone-assignment': 'manual',
-                           'replicas': '1',
-                           'swift-hash': 'fdfef9d4-8b06-11e2-8ac0-531c923c8fae'}
-        swift_storage_config = {'zone': '1',
-                                'block-device': 'vdb',
-                                'overwrite': 'true'}
-        configs = {'keystone': keystone_config,
-                   'swift-proxy': swift_proxy_config,
-                   'swift-storage': swift_storage_config}
+        keystone_config = {
+            'admin-password': 'openstack',
+            'admin-token': 'ubuntutesting'
+        }
+        swift_proxy_config = {
+            'zone-assignment': 'manual',
+            'replicas': '1',
+            'swift-hash': 'fdfef9d4-8b06-11e2-8ac0-531c923c8fae'
+        }
+        swift_storage_config = {
+            'zone': '1',
+            'block-device': 'vdb',
+            'overwrite': 'true'
+        }
+        configs = {
+            'keystone': keystone_config,
+            'swift-proxy': swift_proxy_config,
+            'swift-storage': swift_storage_config
+        }
         super(SwiftProxyBasicDeployment, self)._configure_services(configs)
 
     def _initialize_tests(self):
@@ -89,15 +96,16 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         self.glance = u.authenticate_glance_admin(self.keystone)
 
         # Authenticate swift user
-        keystone_relation = self.keystone_sentry.relation('identity-service',
-                                                 'swift-proxy:identity-service')
+        keystone_relation = self.keystone_sentry.relation(
+            'identity-service', 'swift-proxy:identity-service')
         ep = self.keystone.service_catalog.url_for(service_type='identity',
                                                    endpoint_type='publicURL')
-        self.swift = swiftclient.Connection(authurl=ep,
-                                user=keystone_relation['service_username'],
-                                key=keystone_relation['service_password'],
-                                tenant_name=keystone_relation['service_tenant'],
-                                auth_version='2.0')
+        self.swift = swiftclient.Connection(
+            authurl=ep,
+            user=keystone_relation['service_username'],
+            key=keystone_relation['service_password'],
+            tenant_name=keystone_relation['service_tenant'],
+            auth_version='2.0')
 
         # Create a demo tenant/role/user
         self.demo_tenant = 'demoTenant'
@@ -140,7 +148,8 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         commands = {
             self.mysql_sentry: ['status mysql'],
             self.keystone_sentry: ['status keystone'],
-            self.glance_sentry: ['status glance-registry', 'status glance-api'],
+            self.glance_sentry: ['status glance-registry',
+                                 'status glance-api'],
             self.swift_proxy_sentry: ['status swift-proxy'],
             self.swift_storage_sentry: swift_storage_services
         }
@@ -217,7 +226,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             amulet.raise_status(amulet.FAIL, msg=message)
 
     def test_swift_proxy_identity_service_relation(self):
-        """Verify the swift-proxy to keystone identity-service relation data."""
+        """Verify the swift-proxy to keystone identity relation data."""
         unit = self.swift_proxy_sentry
         relation = ['identity-service', 'keystone:identity-service']
         expected = {
@@ -236,7 +245,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             amulet.raise_status(amulet.FAIL, msg=message)
 
     def test_keystone_identity_service_relation(self):
-        """Verify the keystone to swift-proxy identity-service relation data."""
+        """Verify the keystone to swift-proxy identity relation data."""
         unit = self.keystone_sentry
         relation = ['identity-service', 'swift-proxy:identity-service']
         expected = {
@@ -299,7 +308,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         """Verify the glance to swift-proxy object-store relation data."""
         unit = self.glance_sentry
         relation = ['object-store', 'swift-proxy:object-store']
-        expected = { 'private-address': u.valid_ip }
+        expected = {'private-address': u.valid_ip}
 
         ret = u.validate_relation_data(unit, relation, expected)
         if ret:
@@ -357,10 +366,10 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
 
         unit = self.swift_proxy_sentry
         conf = '/etc/swift/proxy-server.conf'
-        keystone_relation = self.keystone_sentry.relation('identity-service',
-                                                 'swift-proxy:identity-service')
-        swift_proxy_relation = unit.relation('identity-service',
-                                             'keystone:identity-service')
+        keystone_relation = self.keystone_sentry.relation(
+            'identity-service', 'swift-proxy:identity-service')
+        swift_proxy_relation = unit.relation(
+            'identity-service', 'keystone:identity-service')
         swift_proxy_ip = swift_proxy_relation['private-address']
         auth_host = keystone_relation['auth_host']
         auth_protocol = keystone_relation['auth_protocol']
@@ -376,11 +385,11 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                 'log_address': '/dev/log'
             },
             'pipeline:main': {
-                'pipeline': 'gatekeeper healthcheck proxy-logging cache swift3 '
-                            's3token container_sync bulk tempurl slo dlo '
-                            'formpost authtoken keystoneauth staticweb '
-                            'container-quotas account-quotas proxy-logging '
-                            'proxy-server'
+                'pipeline': 'gatekeeper healthcheck proxy-logging cache '
+                            'swift3 s3token container_sync bulk tempurl '
+                            'slo dlo formpost authtoken keystoneauth '
+                            'staticweb container-quotas account-quotas '
+                            'proxy-logging proxy-server'
             },
             'app:proxy-server': {
                 'use': 'egg:swift#proxy',
@@ -420,8 +429,10 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                 'auth_host': auth_host,
                 'auth_port': keystone_relation['auth_port'],
                 'auth_protocol': auth_protocol,
-                'auth_uri': '{}://{}:{}'.format(auth_protocol, auth_host,
-                                             keystone_relation['service_port']),
+                'auth_uri': '{}://{}:{}'.format(
+                    auth_protocol,
+                    auth_host,
+                    keystone_relation['service_port']),
                 'admin_tenant_name': keystone_relation['service_tenant'],
                 'admin_user': keystone_relation['service_username'],
                 'admin_password': keystone_relation['service_password'],
@@ -456,10 +467,10 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
 
         unit = self.swift_proxy_sentry
         conf = '/etc/swift/proxy-server.conf'
-        keystone_relation = self.keystone_sentry.relation('identity-service',
-                                                 'swift-proxy:identity-service')
-        swift_proxy_relation = unit.relation('identity-service',
-                                             'keystone:identity-service')
+        keystone_relation = self.keystone_sentry.relation(
+            'identity-service', 'swift-proxy:identity-service')
+        swift_proxy_relation = unit.relation(
+            'identity-service', 'keystone:identity-service')
         swift_proxy_ip = swift_proxy_relation['private-address']
         auth_host = keystone_relation['auth_host']
         auth_protocol = keystone_relation['auth_protocol']
@@ -503,8 +514,10 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                 'auth_host': auth_host,
                 'auth_port': keystone_relation['auth_port'],
                 'auth_protocol': auth_protocol,
-                'auth_uri': '{}://{}:{}'.format(auth_protocol, auth_host,
-                                             keystone_relation['service_port']),
+                'auth_uri': '{}://{}:{}'.format(
+                    auth_protocol,
+                    auth_host,
+                    keystone_relation['service_port']),
                 'admin_tenant_name': keystone_relation['service_tenant'],
                 'admin_user': keystone_relation['service_username'],
                 'admin_password': keystone_relation['service_password'],
@@ -540,10 +553,10 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
 
         unit = self.swift_proxy_sentry
         conf = '/etc/swift/proxy-server.conf'
-        keystone_relation = self.keystone_sentry.relation('identity-service',
-                                                 'swift-proxy:identity-service')
-        swift_proxy_relation = unit.relation('identity-service',
-                                             'keystone:identity-service')
+        keystone_relation = self.keystone_sentry.relation(
+            'identity-service', 'swift-proxy:identity-service')
+        swift_proxy_relation = unit.relation(
+            'identity-service', 'keystone:identity-service')
         swift_proxy_ip = swift_proxy_relation['private-address']
         auth_host = keystone_relation['auth_host']
         auth_protocol = keystone_relation['auth_protocol']
@@ -588,8 +601,10 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                 'auth_host': auth_host,
                 'auth_port': keystone_relation['auth_port'],
                 'auth_protocol': auth_protocol,
-                'auth_uri': '{}://{}:{}'.format(auth_protocol, auth_host,
-                                             keystone_relation['service_port']),
+                'auth_uri': '{}://{}:{}'.format(
+                    auth_protocol,
+                    auth_host,
+                    keystone_relation['service_port']),
                 'admin_tenant_name': keystone_relation['service_tenant'],
                 'admin_user': keystone_relation['service_username'],
                 'admin_password': keystone_relation['service_password'],
@@ -624,10 +639,10 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
 
         unit = self.swift_proxy_sentry
         conf = '/etc/swift/proxy-server.conf'
-        keystone_relation = self.keystone_sentry.relation('identity-service',
-                                                 'swift-proxy:identity-service')
-        swift_proxy_relation = unit.relation('identity-service',
-                                             'keystone:identity-service')
+        keystone_relation = self.keystone_sentry.relation(
+            'identity-service', 'swift-proxy:identity-service')
+        swift_proxy_relation = unit.relation(
+            'identity-service', 'keystone:identity-service')
         swift_proxy_ip = swift_proxy_relation['private-address']
         auth_host = keystone_relation['auth_host']
         auth_protocol = keystone_relation['auth_protocol']
@@ -669,8 +684,10 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                 'auth_host': auth_host,
                 'auth_port': keystone_relation['auth_port'],
                 'auth_protocol': auth_protocol,
-                'auth_uri': '{}://{}:{}'.format(auth_protocol, auth_host,
-                                             keystone_relation['service_port']),
+                'auth_uri': '{}://{}:{}'.format(
+                    auth_protocol,
+                    auth_host,
+                    keystone_relation['service_port']),
                 'admin_tenant_name': keystone_relation['service_tenant'],
                 'admin_user': keystone_relation['service_username'],
                 'admin_password': keystone_relation['service_password'],
@@ -704,10 +721,10 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
 
         unit = self.swift_proxy_sentry
         conf = '/etc/swift/proxy-server.conf'
-        keystone_relation = self.keystone_sentry.relation('identity-service',
-                                                 'swift-proxy:identity-service')
-        swift_proxy_relation = unit.relation('identity-service',
-                                             'keystone:identity-service')
+        keystone_relation = self.keystone_sentry.relation(
+            'identity-service', 'swift-proxy:identity-service')
+        swift_proxy_relation = unit.relation(
+            'identity-service', 'keystone:identity-service')
         swift_proxy_ip = swift_proxy_relation['private-address']
         auth_host = keystone_relation['auth_host']
         auth_protocol = keystone_relation['auth_protocol']
@@ -749,8 +766,10 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                 'auth_host': auth_host,
                 'auth_port': keystone_relation['auth_port'],
                 'auth_protocol': auth_protocol,
-                'auth_uri': '{}://{}:{}'.format(auth_protocol, auth_host,
-                                         keystone_relation['service_port']),
+                'auth_uri': '{}://{}:{}'.format(
+                    auth_protocol,
+                    auth_host,
+                    keystone_relation['service_port']),
                 'admin_tenant_name': keystone_relation['service_tenant'],
                 'admin_user': keystone_relation['service_username'],
                 'admin_password': keystone_relation['service_password'],
@@ -778,8 +797,10 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                 amulet.raise_status(amulet.FAIL, msg=message)
 
     def test_image_create(self):
-        """Create an instance in glance, which is backed by swift, and validate
-           that some of the metadata for the image match in glance and swift."""
+        """Create an instance in glance, which is backed by swift, and
+        validate that some of the metadata for the image match in glance
+        and swift.
+        """
         # NOTE(coreycb): Skipping failing test on folsom until resolved. On
         #                folsom only, uploading an image to glance gets 400 Bad
         #                Request - Error uploading image: (error): [Errno 111]
@@ -809,7 +830,8 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         # Validate that swift object's checksum/size match that from glance
         headers, containers = self.swift.get_account()
         if len(containers) != 1:
-            msg = "Expected 1 swift container, found {}".format(len(containers))
+            msg = ("Expected 1 swift container, found "
+                   "{}".format(len(containers)))
             amulet.raise_status(amulet.FAIL, msg=msg)
 
         container_name = containers[0].get('name')
@@ -823,13 +845,13 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         swift_object_md5 = objects[0].get('hash')
 
         if glance_image_size != swift_object_size:
-            msg = "Glance image size {} != swift object size {}".format( \
-                                           glance_image_size, swift_object_size)
+            msg = ("Glance image size {} != swift object size "
+                   "{}".format(glance_image_size, swift_object_size))
             amulet.raise_status(amulet.FAIL, msg=msg)
 
         if glance_image_md5 != swift_object_md5:
-            msg = "Glance image hash {} != swift object hash {}".format( \
-                                             glance_image_md5, swift_object_md5)
+            msg = ("Glance image hash {} != swift object hash "
+                   "{}".format(glance_image_md5, swift_object_md5))
             amulet.raise_status(amulet.FAIL, msg=msg)
 
         # Cleanup
