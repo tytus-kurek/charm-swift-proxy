@@ -1,8 +1,9 @@
 #!/usr/bin/python
 
+import time
+
 import amulet
 import swiftclient
-import time
 
 from charmhelpers.contrib.openstack.amulet.deployment import (
     OpenStackAmuletDeployment
@@ -421,9 +422,6 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             'filter:authtoken': {
                 'paste.filter_factory': 'keystoneclient.middleware.'
                                         'auth_token:filter_factory',
-                'auth_host': auth_host,
-                'auth_port': keystone_relation['auth_port'],
-                'auth_protocol': auth_protocol,
                 'auth_uri': '{}://{}:{}'.format(
                     auth_protocol,
                     auth_host,
@@ -448,6 +446,13 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             },
             'filter:swift3': {'use': 'egg:swift3#swift3'}
         }
+
+        if self._get_openstack_release() < self.vivid_kilo:
+            expected['filter:authtoken'].update({
+                'auth_host': auth_host,
+                'auth_port': keystone_relation['auth_port'],
+                'auth_protocol': auth_protocol,
+            })
 
         for section, pairs in expected.iteritems():
             ret = u.validate_config_data(unit, conf, section, pairs)
