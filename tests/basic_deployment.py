@@ -420,8 +420,6 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                 'operator_roles': 'Member,Admin'
             },
             'filter:authtoken': {
-                'paste.filter_factory': 'keystoneclient.middleware.'
-                                        'auth_token:filter_factory',
                 'auth_uri': '{}://{}:{}'.format(
                     auth_protocol,
                     auth_host,
@@ -447,8 +445,17 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             'filter:swift3': {'use': 'egg:swift3#swift3'}
         }
 
-        if self._get_openstack_release() < self.trusty_kilo:
+        if self._get_openstack_release() >= self.trusty_kilo:
+            # Kilo and later
             expected['filter:authtoken'].update({
+                'paste.filter_factory': 'keystonemiddleware.auth_token:'
+                                        'filter_factory'
+            })
+        else:
+            # Juno and earlier
+            expected['filter:authtoken'].update({
+                'paste.filter_factory': 'keystoneclient.middleware.'
+                                        'auth_token:filter_factory',
                 'auth_host': auth_host,
                 'auth_port': keystone_relation['auth_port'],
                 'auth_protocol': auth_protocol,
