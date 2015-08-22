@@ -447,7 +447,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             'filter:swift3': {'use': 'egg:swift3#swift3'}
         }
 
-        if self._get_openstack_release() < self.vivid_kilo:
+        if self._get_openstack_release() < self.trusty_kilo:
             expected['filter:authtoken'].update({
                 'auth_host': auth_host,
                 'auth_port': keystone_relation['auth_port'],
