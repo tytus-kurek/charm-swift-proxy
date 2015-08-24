@@ -431,17 +431,6 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                 'signing_dir': '/var/cache/swift',
                 'cache': 'swift.cache'
             },
-            'filter:s3token': {
-                'paste.filter_factory': 'keystoneclient.middleware.'
-                                        's3_token:filter_factory',
-                'service_host': keystone_relation['service_host'],
-                'service_port': keystone_relation['service_port'],
-                'auth_port': keystone_relation['auth_port'],
-                'auth_host': keystone_relation['auth_host'],
-                'auth_protocol': keystone_relation['auth_protocol'],
-                'auth_token': keystone_relation['admin_token'],
-                'admin_token': keystone_relation['admin_token']
-            },
             'filter:swift3': {'use': 'egg:swift3#swift3'}
         }
 
@@ -449,8 +438,25 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             # Kilo and later
             expected['filter:authtoken'].update({
                 'paste.filter_factory': 'keystonemiddleware.auth_token:'
-                                        'filter_factory'
+                                        'filter_factory',
+                'identity_uri': '{}://{}:{}'.format(
+                    auth_protocol,
+                    auth_host,
+                    keystone_relation['auth_port']),
             })
+            expected['filter:s3token'] = {
+                # No section commonality with J and earlier
+                'paste.filter_factory': 'keystonemiddleware.s3_token'
+                                        ':filter_factory',
+                'auth_uri': '{}://{}:{}'.format(
+                    auth_protocol,
+                    auth_host,
+                    keystone_relation['service_port']),
+                'identity_uri': '{}://{}:{}'.format(
+                    auth_protocol,
+                    auth_host,
+                    keystone_relation['auth_port']),
+            }
         else:
             # Juno and earlier
             expected['filter:authtoken'].update({
@@ -460,6 +466,18 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                 'auth_port': keystone_relation['auth_port'],
                 'auth_protocol': auth_protocol,
             })
+            expected['filter:s3token'] = {
+                # No section commonality with K and later
+                'paste.filter_factory': 'keystoneclient.middleware.'
+                                        's3_token:filter_factory',
+                'auth_port': keystone_relation['auth_port'],
+                'auth_host': keystone_relation['auth_host'],
+                'service_host': keystone_relation['service_host'],
+                'service_port': keystone_relation['service_port'],
+                'auth_protocol': keystone_relation['auth_protocol'],
+                'auth_token': keystone_relation['admin_token'],
+                'admin_token': keystone_relation['admin_token']
+            }
 
         for section, pairs in expected.iteritems():
             ret = u.validate_config_data(unit, conf, section, pairs)
