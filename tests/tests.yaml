@@ -8,7 +8,6 @@ sources:
     - ppa:juju/stable
 packages:
     - amulet
-    - python-amulet
     - python-cinderclient
     - python-distro-info
     - python-glanceclient
