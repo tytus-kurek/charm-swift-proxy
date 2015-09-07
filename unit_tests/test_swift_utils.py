@@ -5,9 +5,8 @@ import tempfile
 import uuid
 import unittest
 
-
 with mock.patch('charmhelpers.core.hookenv.config'):
-    import swift_utils
+    import lib.swift_utils as swift_utils
 
 
 def init_ring_paths(tmpdir):
@@ -21,16 +20,16 @@ def init_ring_paths(tmpdir):
 
 class SwiftUtilsTestCase(unittest.TestCase):
 
-    @mock.patch('swift_utils.get_broker_token')
-    @mock.patch('swift_utils.update_www_rings')
-    @mock.patch('swift_utils.get_builders_checksum')
-    @mock.patch('swift_utils.get_rings_checksum')
-    @mock.patch('swift_utils.balance_rings')
-    @mock.patch('swift_utils.log')
-    @mock.patch('swift_utils.os.path.exists')
-    @mock.patch('swift_utils.is_elected_leader')
-    @mock.patch('swift_utils.get_min_part_hours')
-    @mock.patch('swift_utils.set_min_part_hours')
+    @mock.patch('lib.swift_utils.get_broker_token')
+    @mock.patch('lib.swift_utils.update_www_rings')
+    @mock.patch('lib.swift_utils.get_builders_checksum')
+    @mock.patch('lib.swift_utils.get_rings_checksum')
+    @mock.patch('lib.swift_utils.balance_rings')
+    @mock.patch('lib.swift_utils.log')
+    @mock.patch('lib.swift_utils.os.path.exists')
+    @mock.patch('lib.swift_utils.is_elected_leader')
+    @mock.patch('lib.swift_utils.get_min_part_hours')
+    @mock.patch('lib.swift_utils.set_min_part_hours')
     def test_update_rings(self, mock_set_min_hours,
                           mock_get_min_hours,
                           mock_is_elected_leader, mock_path_exists,
@@ -76,13 +75,13 @@ class SwiftUtilsTestCase(unittest.TestCase):
         self.assertTrue(mock_set_min_hours.called)
         self.assertTrue(mock_balance_rings.called)
 
-    @mock.patch('swift_utils.get_broker_token')
-    @mock.patch('swift_utils.balance_rings')
-    @mock.patch('swift_utils.log')
-    @mock.patch('swift_utils.is_elected_leader')
-    @mock.patch('swift_utils.config')
-    @mock.patch('swift_utils.update_www_rings')
-    @mock.patch('swift_utils.cluster_sync_rings')
+    @mock.patch('lib.swift_utils.get_broker_token')
+    @mock.patch('lib.swift_utils.balance_rings')
+    @mock.patch('lib.swift_utils.log')
+    @mock.patch('lib.swift_utils.is_elected_leader')
+    @mock.patch('lib.swift_utils.config')
+    @mock.patch('lib.swift_utils.update_www_rings')
+    @mock.patch('lib.swift_utils.cluster_sync_rings')
     def test_sync_builders_and_rings_if_changed(self, mock_cluster_sync_rings,
                                                 mock_update_www_rings,
                                                 mock_config,
@@ -114,7 +113,7 @@ class SwiftUtilsTestCase(unittest.TestCase):
         self.assertTrue(mock_update_www_rings.called)
         self.assertTrue(mock_cluster_sync_rings.called)
 
-    @mock.patch('swift_utils.get_www_dir')
+    @mock.patch('lib.swift_utils.get_www_dir')
     def test_mark_www_rings_deleted(self, mock_get_www_dir):
         try:
             tmpdir = tempfile.mkdtemp()
@@ -123,7 +122,7 @@ class SwiftUtilsTestCase(unittest.TestCase):
         finally:
             shutil.rmtree(tmpdir)
 
-    @mock.patch('swift_utils.uuid')
+    @mock.patch('lib.swift_utils.uuid')
     def test_cluster_rpc_stop_proxy_request(self, mock_uuid):
         mock_uuid.uuid4.return_value = 'test-uuid'
         rpc = swift_utils.SwiftProxyClusterRPC()
@@ -147,7 +146,7 @@ class SwiftUtilsTestCase(unittest.TestCase):
                           'stop-proxy-service-ack': None,
                           'sync-only-builders': None}, rq)
 
-    @mock.patch('swift_utils.uuid')
+    @mock.patch('lib.swift_utils.uuid')
     def test_cluster_rpc_stop_proxy_ack(self, mock_uuid):
         mock_uuid.uuid4.return_value = 'token2'
         rpc = swift_utils.SwiftProxyClusterRPC()
@@ -161,7 +160,7 @@ class SwiftUtilsTestCase(unittest.TestCase):
                           'stop-proxy-service-ack': 'token1',
                           'sync-only-builders': None}, rq)
 
-    @mock.patch('swift_utils.uuid')
+    @mock.patch('lib.swift_utils.uuid')
     def test_cluster_rpc_sync_request(self, mock_uuid):
         mock_uuid.uuid4.return_value = 'token2'
         rpc = swift_utils.SwiftProxyClusterRPC()
@@ -175,7 +174,7 @@ class SwiftUtilsTestCase(unittest.TestCase):
                           'stop-proxy-service-ack': None,
                           'sync-only-builders': None}, rq)
 
-    @mock.patch('swift_utils.uuid')
+    @mock.patch('lib.swift_utils.uuid')
     def test_cluster_rpc_notify_leader_changed(self, mock_uuid):
         mock_uuid.uuid4.return_value = 'token1'
         rpc = swift_utils.SwiftProxyClusterRPC()

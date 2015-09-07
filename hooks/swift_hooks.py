@@ -8,7 +8,7 @@ from subprocess import (
     CalledProcessError,
 )
 
-from swift_utils import (
+from lib.swift_utils import (
     SwiftProxyCharmException,
     register_configs,
     restart_map,

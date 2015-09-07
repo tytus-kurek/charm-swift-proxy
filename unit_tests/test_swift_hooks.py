@@ -1,8 +1,9 @@
 from mock import patch
+import sys
 import unittest
 import uuid
 
-
+sys.path.append("hooks")
 with patch('charmhelpers.core.hookenv.log'):
     import swift_hooks
 
