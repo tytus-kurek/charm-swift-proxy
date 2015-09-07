@@ -334,7 +334,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         self.d.configure('swift-proxy', {'node-timeout': '60'})
 
     def _assert_services(self, should_run):
-        swift_proxy_services = ['swift-proxy',
+        swift_proxy_services = ['swift-proxy-server',
                                 'haproxy',
                                 'apache2',
                                 'memcached']
