@@ -50,8 +50,14 @@ class HAProxyContext(OSContextGenerator):
 
 class ApacheSSLContext(SSLContext):
     interfaces = ['https']
-    external_ports = [config('bind-port')]
     service_namespace = 'swift'
+
+    # We make this a property so that we avoid import-time
+    # dependencies on config()
+
+    @property
+    def external_ports(self):
+        return [config('bind-port')]
 
 
 class SwiftRingContext(OSContextGenerator):
