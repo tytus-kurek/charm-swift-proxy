@@ -55,6 +55,7 @@ class ApacheSSLContext(SSLContext):
     # We make this a property so that we avoid import-time
     # dependencies on config()
 
+    @property
     def external_ports(self):
         return [config('bind-port')]
 
