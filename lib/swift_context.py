@@ -52,7 +52,9 @@ class ApacheSSLContext(SSLContext):
     interfaces = ['https']
     service_namespace = 'swift'
 
-    @property
+    # We make this a property so that we avoid import-time
+    # dependencies on config()
+
     def external_ports(self):
         return [config('bind-port')]
 
