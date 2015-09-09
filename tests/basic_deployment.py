@@ -335,6 +335,40 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
 
         self.d.configure('swift-proxy', {'node-timeout': '60'})
 
+    def test_z_no_restart_on_config_change_when_paused(self):
+        """Verify that the specified services are not restarted when the config
+           is changed and the unit is paused."""
+        u.log.info('Checking that system services do not get restarted  '
+                   'when charm config changes but unit is paused...')
+        sentry = self.swift_proxy_sentry
+        juju_service = 'swift-proxy'
+
+        # Expected default and alternate values
+        set_default = {'node-timeout': '60'}
+        set_alternate = {'node-timeout': '90'}
+
+        services = ['swift-proxy', 'haproxy', 'apache2', 'memcached']
+
+        # Pause the unit
+        u.log.debug('Pausing the unit...')
+        pause_action_id = u.run_action(sentry, "pause")
+        assert u.wait_on_action(pause_action_id), "Pause action failed."
+
+        # Make config change, check for service restarts
+        u.log.debug('Making config change on {}...'.format(juju_service))
+        self.d.configure(juju_service, set_alternate)
+
+        for service in services:
+            u.log.debug("Checking that service didn't start while "
+                        "paused: {}".format(service))
+            # No explicit assert because get_process_id_list will do it for us
+            u.get_process_id_list(
+                sentry, service, expect_success=False)
+
+        self.d.configure(juju_service, set_default)
+        resume_action_id = u.run_action(sentry, "resume")
+        assert u.wait_on_action(resume_action_id), "Resume action failed."
+
     def test_swift_config(self):
         """Verify the data in the swift config file."""
         unit = self.swift_proxy_sentry
