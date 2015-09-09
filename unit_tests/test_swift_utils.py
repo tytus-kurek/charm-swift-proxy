@@ -222,3 +222,15 @@ class SwiftUtilsTestCase(unittest.TestCase):
 
         rsps = []
         self.assertIsNone(swift_utils.get_first_available_value(rsps, 'key3'))
+
+    def test_is_paused_unknown(self):
+        fake_status_get = lambda: ("unknown", "")
+        self.assertFalse(swift_utils.is_paused(status_get=fake_status_get))
+
+    def test_is_paused_paused(self):
+        fake_status_get = lambda: ("maintenance", "Paused")
+        self.assertTrue(swift_utils.is_paused(status_get=fake_status_get))
+
+    def test_is_paused_other_maintenance(self):
+        fake_status_get = lambda: ("maintenance", "Hook")
+        self.assertFalse(swift_utils.is_paused(status_get=fake_status_get))
