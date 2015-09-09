@@ -353,6 +353,15 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         assert u.wait_on_action(pause_action_id), "Pause action failed."
 
         self._assert_services(should_run=False)
+        status, message = u.status_get(self.swift_proxy_sentry)
+        if status != "maintenance":
+            msg = ("Pause action failed to move unit to maintenance "
+                   "status (got {} instead)".format(status))
+            amulet.raise_status(amulet.FAIL, msg=msg)
+        if message != "Paused. Use 'resume' action to resume normal service.":
+            msg = ("Pause action failed to set message"
+                   " (got {} instead)".format(message))
+            amulet.raise_status(amulet.FAIL, msg=msg)
 
     def _test_resume(self):
         u.log.info("Testing resume action")
@@ -362,6 +371,15 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         assert u.wait_on_action(resume_action_id), "Resume action failed."
 
         self._assert_services(should_run=True)
+        status, message = u.status_get(self.swift_proxy_sentry)
+        if status != "active":
+            msg = ("Resume action failed to move unit to active "
+                   "status (got {} instead)".format(status))
+            amulet.raise_status(amulet.FAIL, msg=msg)
+        if message != "":
+            msg = ("Resume action failed to clear message"
+                   " (got {} instead)".format(message))
+            amulet.raise_status(amulet.FAIL, msg=msg)
 
     def test_z_pause_resume_actions(self):
         """Pause and then resume swift-proxy."""
