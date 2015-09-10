@@ -4,7 +4,8 @@ summary: "Swift proxy node"
 description: |
   Swift is a distributed virtual object store. This formula deploys the proxy node
   to be related to storage nodes.
-categories:
+tags:
+    - openstack
     - cache-proxy
 provides:
   nrpe-external-master:
