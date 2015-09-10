@@ -1,4 +1,4 @@
-branch: lp:~tealeg/charm-helpers/add-amulet-utils-status-get
+branch: lp:charm-helpers
 destination: tests/charmhelpers
 include:
     - contrib.amulet
