@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 import amulet
 import swiftclient
 
@@ -334,6 +332,60 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             amulet.raise_status(amulet.FAIL, msg=msg)
 
         self.d.configure('swift-proxy', {'node-timeout': '60'})
+
+    def _assert_services(self, should_run):
+        swift_proxy_services = ['swift-proxy-server',
+                                'haproxy',
+                                'apache2',
+                                'memcached']
+        u.get_unit_process_ids(
+            {self.swift_proxy_sentry: swift_proxy_services},
+            expect_success=should_run)
+        # No point using validate_unit_process_ids, since we don't
+        # care about how many PIDs, merely that they're running, so
+        # would populate expected with either True or False. This
+        # validation is already performed in get_process_id_list
+
+    def _test_pause(self):
+        u.log.info("Testing pause action")
+        self._assert_services(should_run=True)
+        pause_action_id = u.run_action(self.swift_proxy_sentry, "pause")
+        assert u.wait_on_action(pause_action_id), "Pause action failed."
+
+        self._assert_services(should_run=False)
+        status, message = u.status_get(self.swift_proxy_sentry)
+        if status != "maintenance":
+            msg = ("Pause action failed to move unit to maintenance "
+                   "status (got {} instead)".format(status))
+            amulet.raise_status(amulet.FAIL, msg=msg)
+        if message != "Paused. Use 'resume' action to resume normal service.":
+            msg = ("Pause action failed to set message"
+                   " (got {} instead)".format(message))
+            amulet.raise_status(amulet.FAIL, msg=msg)
+
+    def _test_resume(self):
+        u.log.info("Testing resume action")
+        # service is left paused by _test_pause
+        self._assert_services(should_run=False)
+        resume_action_id = u.run_action(self.swift_proxy_sentry, "resume")
+        assert u.wait_on_action(resume_action_id), "Resume action failed."
+
+        self._assert_services(should_run=True)
+        status, message = u.status_get(self.swift_proxy_sentry)
+        if status != "active":
+            msg = ("Resume action failed to move unit to active "
+                   "status (got {} instead)".format(status))
+            amulet.raise_status(amulet.FAIL, msg=msg)
+        if message != "":
+            msg = ("Resume action failed to clear message"
+                   " (got {} instead)".format(message))
+            amulet.raise_status(amulet.FAIL, msg=msg)
+
+    def test_z_pause_resume_actions(self):
+        """Pause and then resume swift-proxy."""
+        u.log.debug('Checking pause/resume actions...')
+        self._test_pause()
+        self._test_resume()
 
     def test_swift_config(self):
         """Verify the data in the swift config file."""
