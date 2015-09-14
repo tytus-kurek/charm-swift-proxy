@@ -42,6 +42,7 @@ from charmhelpers.core.hookenv import (
     relation_set,
     relation_ids,
     related_units,
+    status_get
 )
 from charmhelpers.fetch import (
     apt_update,
@@ -50,7 +51,8 @@ from charmhelpers.fetch import (
     add_source
 )
 from charmhelpers.core.host import (
-    lsb_release
+    lsb_release,
+    restart_on_change,
 )
 from charmhelpers.contrib.network.ip import (
     format_ipv6_addr,
@@ -994,3 +996,19 @@ def get_hostaddr():
         return get_ipv6_addr(exc_list=[config('vip')])[0]
 
     return unit_get('private-address')
+
+
+def is_paused(status_get=status_get):
+    """Is the unit paused?"""
+    status, message = status_get()
+    return status == "maintenance" and message.startswith("Paused")
+
+
+def pause_aware_restart_on_change(restart_map):
+    """Avoids restarting services if config changes when unit is paused."""
+    def wrapper(f):
+        if is_paused():
+            return f
+        else:
+            return restart_on_change(restart_map)(f)
+    return wrapper
