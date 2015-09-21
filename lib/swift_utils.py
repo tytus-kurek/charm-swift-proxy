@@ -383,7 +383,8 @@ def _load_builder(path):
 
 def _write_ring(ring, ring_path):
     import cPickle as pickle
-    pickle.dump(ring.to_dict(), open(ring_path, 'wb'), protocol=2)
+    with open(ring_path, "wb") as fd:
+        pickle.dump(ring.to_dict(), fd, protocol=2)
 
 
 def ring_port(ring_path, node):
