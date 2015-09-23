@@ -9,3 +9,7 @@ resume:
     Resume swift-proxy services.
     If the swift-proxy deployment is clustered using the hacluster charm, the
     corresponding hacluster unit on the node must be resumed as well.
+openstack-upgrade:
+  description: |
+    Perform openstack upgrades. Config option action-managed-upgrade must be
+    set to True.
