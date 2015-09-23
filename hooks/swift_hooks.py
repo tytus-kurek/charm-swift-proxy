@@ -132,7 +132,8 @@ def config_changed():
     update_nrpe_config()
 
     # Determine whether or not we should do an upgrade.
-    if openstack.openstack_upgrade_available('python-swift'):
+    if not config('action-managed-upgrade') and \
+            openstack.openstack_upgrade_available('python-swift'):
         do_openstack_upgrade(CONFIGS)
 
     update_rings(min_part_hours=config('min-hours'))
