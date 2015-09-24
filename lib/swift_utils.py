@@ -23,6 +23,7 @@ from swift_context import (
 import charmhelpers.contrib.openstack.context as context
 import charmhelpers.contrib.openstack.templating as templating
 from charmhelpers.contrib.openstack.utils import (
+    os_release,
     get_os_codename_package,
     get_os_codename_install_source,
     configure_installation_source
@@ -587,12 +588,11 @@ def setup_ipv6():
                "than Trusty 14.04")
         raise SwiftProxyCharmException(msg)
 
-    # NOTE(xianghui): Need to install haproxy(1.5.3) from trusty-backports
-    # to support ipv6 address, so check is required to make sure not
-    # breaking other versions, IPv6 only support for >= Trusty
-    if ubuntu_rel == 'trusty':
-        add_source('deb http://archive.ubuntu.com/ubuntu trusty-backports'
-                   ' main')
+    # Need haproxy >= 1.5.3 for ipv6 so for Trusty if we are <= Kilo we need to
+    # use trusty-backports otherwise we can use the UCA.
+    if ubuntu_rel == 'trusty' and os_release('swift-proxy') < 'liberty':
+        add_source('deb http://archive.ubuntu.com/ubuntu trusty-backports '
+                   'main')
         apt_update()
         apt_install('haproxy/trusty-backports', fatal=True)
 
