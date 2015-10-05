@@ -533,7 +533,9 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
 
         sentry = self.swift_proxy_sentry
         juju_service = 'swift-proxy'
-        services = {'swift-proxy': '/etc/swift/proxy-server.conf'}
+
+        # Process names, corresponding conf files
+        services = {'swift-proxy-server': '/etc/swift/proxy-server.conf'}
 
         # Expected default and alternate values
         set_default = {'node-timeout': '60'}
