@@ -23,6 +23,7 @@ from swift_context import (
 import charmhelpers.contrib.openstack.context as context
 import charmhelpers.contrib.openstack.templating as templating
 from charmhelpers.contrib.openstack.utils import (
+    os_release,
     get_os_codename_package,
     get_os_codename_install_source,
     configure_installation_source
@@ -42,6 +43,7 @@ from charmhelpers.core.hookenv import (
     relation_set,
     relation_ids,
     related_units,
+    status_get
 )
 from charmhelpers.fetch import (
     apt_update,
@@ -50,7 +52,8 @@ from charmhelpers.fetch import (
     add_source
 )
 from charmhelpers.core.host import (
-    lsb_release
+    lsb_release,
+    restart_on_change,
 )
 from charmhelpers.contrib.network.ip import (
     format_ipv6_addr,
@@ -381,7 +384,8 @@ def _load_builder(path):
 
 def _write_ring(ring, ring_path):
     import cPickle as pickle
-    pickle.dump(ring.to_dict(), open(ring_path, 'wb'), protocol=2)
+    with open(ring_path, "wb") as fd:
+        pickle.dump(ring.to_dict(), fd, protocol=2)
 
 
 def ring_port(ring_path, node):
@@ -584,12 +588,11 @@ def setup_ipv6():
                "than Trusty 14.04")
         raise SwiftProxyCharmException(msg)
 
-    # NOTE(xianghui): Need to install haproxy(1.5.3) from trusty-backports
-    # to support ipv6 address, so check is required to make sure not
-    # breaking other versions, IPv6 only support for >= Trusty
-    if ubuntu_rel == 'trusty':
-        add_source('deb http://archive.ubuntu.com/ubuntu trusty-backports'
-                   ' main')
+    # Need haproxy >= 1.5.3 for ipv6 so for Trusty if we are <= Kilo we need to
+    # use trusty-backports otherwise we can use the UCA.
+    if ubuntu_rel == 'trusty' and os_release('swift-proxy') < 'liberty':
+        add_source('deb http://archive.ubuntu.com/ubuntu trusty-backports '
+                   'main')
         apt_update()
         apt_install('haproxy/trusty-backports', fatal=True)
 
@@ -994,3 +997,19 @@ def get_hostaddr():
         return get_ipv6_addr(exc_list=[config('vip')])[0]
 
     return unit_get('private-address')
+
+
+def is_paused(status_get=status_get):
+    """Is the unit paused?"""
+    status, message = status_get()
+    return status == "maintenance" and message.startswith("Paused")
+
+
+def pause_aware_restart_on_change(restart_map):
+    """Avoids restarting services if config changes when unit is paused."""
+    def wrapper(f):
+        if is_paused():
+            return f
+        else:
+            return restart_on_change(restart_map)(f)
+    return wrapper

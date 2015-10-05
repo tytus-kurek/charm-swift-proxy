@@ -1,9 +1,8 @@
-#!/usr/bin/make
 PYTHON := /usr/bin/env python
 
 lint:
 	@flake8 --exclude hooks/charmhelpers,tests/charmhelpers \
-        hooks unit_tests tests
+        hooks unit_tests tests lib
 	@charm proof
 
 test:
@@ -27,3 +26,5 @@ sync: bin/charm_helpers_sync.py
 publish: lint test
 	bzr push lp:charms/swift-proxy
 	bzr push lp:charms/trusty/swift-proxy
+
+.PHONY: lint unit_test test sync publish
