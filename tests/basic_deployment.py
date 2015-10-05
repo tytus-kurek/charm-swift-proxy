@@ -1,7 +1,4 @@
-#!/usr/bin/python
-
 import time
-
 import amulet
 import swiftclient
 
@@ -559,3 +556,90 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             sleep_time = 0
 
         self.d.configure(juju_service, set_default)
+
+    def test_901_no_restart_on_config_change_when_paused(self):
+        """Verify that the specified services are not restarted when the config
+           is changed and the unit is paused."""
+        u.log.info('Checking that system services do not get restarted  '
+                   'when charm config changes but unit is paused...')
+        sentry = self.swift_proxy_sentry
+        juju_service = 'swift-proxy'
+
+        # Expected default and alternate values
+        set_default = {'node-timeout': '60'}
+        set_alternate = {'node-timeout': '90'}
+
+        services = ['swift-proxy', 'haproxy', 'apache2', 'memcached']
+
+        # Pause the unit
+        u.log.debug('Pausing the unit...')
+        pause_action_id = u.run_action(sentry, "pause")
+        assert u.wait_on_action(pause_action_id), "Resume action failed."
+        # Make config change, check for service restarts
+        u.log.debug('Making config change on {}...'.format(juju_service))
+        self.d.configure(juju_service, set_alternate)
+
+        for service in services:
+            u.log.debug("Checking that service didn't start while "
+                        "paused: {}".format(service))
+            # No explicit assert because get_process_id_list will do it for us
+            u.get_process_id_list(
+                sentry, service, expect_success=False)
+
+        self.d.configure(juju_service, set_default)
+        resume_action_id = u.run_action(sentry, "resume")
+        assert u.wait_on_action(resume_action_id), "Resume action failed."
+
+    def _assert_services(self, should_run):
+        swift_proxy_services = ['swift-proxy-server',
+                                'haproxy',
+                                'apache2',
+                                'memcached']
+        u.get_unit_process_ids(
+            {self.swift_proxy_sentry: swift_proxy_services},
+            expect_success=should_run)
+        # No point using validate_unit_process_ids, since we don't
+        # care about how many PIDs, merely that they're running, so
+        # would populate expected with either True or False. This
+        # validation is already performed in get_process_id_list
+
+    def _test_pause(self):
+        u.log.info("Testing pause action")
+        self._assert_services(should_run=True)
+        pause_action_id = u.run_action(self.swift_proxy_sentry, "pause")
+        assert u.wait_on_action(pause_action_id), "Pause action failed."
+
+        self._assert_services(should_run=False)
+        status, message = u.status_get(self.swift_proxy_sentry)
+        if status != "maintenance":
+            msg = ("Pause action failed to move unit to maintenance "
+                   "status (got {} instead)".format(status))
+            amulet.raise_status(amulet.FAIL, msg=msg)
+        if message != "Paused. Use 'resume' action to resume normal service.":
+            msg = ("Pause action failed to set message"
+                   " (got {} instead)".format(message))
+            amulet.raise_status(amulet.FAIL, msg=msg)
+
+    def _test_resume(self):
+        u.log.info("Testing resume action")
+        # service is left paused by _test_pause
+        self._assert_services(should_run=False)
+        resume_action_id = u.run_action(self.swift_proxy_sentry, "resume")
+        assert u.wait_on_action(resume_action_id), "Resume action failed."
+
+        self._assert_services(should_run=True)
+        status, message = u.status_get(self.swift_proxy_sentry)
+        if status != "active":
+            msg = ("Resume action failed to move unit to active "
+                   "status (got {} instead)".format(status))
+            amulet.raise_status(amulet.FAIL, msg=msg)
+        if message != "":
+            msg = ("Resume action failed to clear message"
+                   " (got {} instead)".format(message))
+            amulet.raise_status(amulet.FAIL, msg=msg)
+
+    def test_902_pause_resume_actions(self):
+        """Pause and then resume swift-proxy."""
+        u.log.debug('Checking pause/resume actions...')
+        self._test_pause()
+        self._test_resume()

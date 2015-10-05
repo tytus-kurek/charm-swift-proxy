@@ -8,7 +8,7 @@ from subprocess import (
     CalledProcessError,
 )
 
-from swift_utils import (
+from lib.swift_utils import (
     SwiftProxyCharmException,
     register_configs,
     restart_map,
@@ -32,6 +32,8 @@ from swift_utils import (
     get_first_available_value,
     all_responses_equal,
     ensure_www_dir_permissions,
+    is_paused,
+    pause_aware_restart_on_change
 )
 
 import charmhelpers.contrib.openstack.utils as openstack
@@ -60,7 +62,6 @@ from charmhelpers.core.host import (
     service_restart,
     service_stop,
     service_start,
-    restart_on_change,
 )
 from charmhelpers.fetch import (
     apt_install,
@@ -93,7 +94,7 @@ hooks = Hooks()
 CONFIGS = register_configs()
 
 
-@hooks.hook('install')
+@hooks.hook('install.real')
 def install():
     execd_preinstall()
     src = config('openstack-origin')
@@ -121,7 +122,7 @@ def install():
 
 
 @hooks.hook('config-changed')
-@restart_on_change(restart_map())
+@pause_aware_restart_on_change(restart_map())
 def config_changed():
     if config('prefer-ipv6'):
         setup_ipv6()
@@ -131,7 +132,8 @@ def config_changed():
     update_nrpe_config()
 
     # Determine whether or not we should do an upgrade.
-    if openstack.openstack_upgrade_available('python-swift'):
+    if not config('action-managed-upgrade') and \
+            openstack.openstack_upgrade_available('python-swift'):
         do_openstack_upgrade(CONFIGS)
 
     update_rings(min_part_hours=config('min-hours'))
@@ -161,7 +163,7 @@ def keystone_joined(relid=None):
 
 
 @hooks.hook('identity-service-relation-changed')
-@restart_on_change(restart_map())
+@pause_aware_restart_on_change(restart_map())
 def keystone_changed():
     configure_https()
 
@@ -181,7 +183,7 @@ def storage_joined():
 
 
 @hooks.hook('swift-storage-relation-changed')
-@restart_on_change(restart_map())
+@pause_aware_restart_on_change(restart_map())
 def storage_changed():
     """Storage relation.
 
@@ -231,13 +233,14 @@ def storage_changed():
         node_settings['devices'] = devs.split(':')
 
     update_rings(node_settings)
-    # Restart proxy here in case no config changes made (so
-    # restart_on_change() ineffective).
-    service_restart('swift-proxy')
+    if not is_paused():
+        # Restart proxy here in case no config changes made (so
+        # pause_aware_restart_on_change() ineffective).
+        service_restart('swift-proxy')
 
 
 @hooks.hook('swift-storage-relation-broken')
-@restart_on_change(restart_map())
+@pause_aware_restart_on_change(restart_map())
 def storage_broken():
     CONFIGS.write_all()
 
@@ -358,7 +361,8 @@ def cluster_non_leader_actions():
     broker = settings.get('builder-broker', None)
     if not broker:
         log("No update available", level=DEBUG)
-        service_start('swift-proxy')
+        if not is_paused():
+            service_start('swift-proxy')
         return
 
     builders_only = int(settings.get('sync-only-builders', 0))
@@ -375,14 +379,15 @@ def cluster_non_leader_actions():
     if fully_synced():
         log("Ring builders synced - starting proxy", level=INFO)
         CONFIGS.write_all()
-        service_start('swift-proxy')
+        if not is_paused():
+            service_start('swift-proxy')
     else:
         log("Not all builders and rings synced yet - waiting for peer sync "
             "before starting proxy", level=INFO)
 
 
 @hooks.hook('cluster-relation-changed')
-@restart_on_change(restart_map())
+@pause_aware_restart_on_change(restart_map())
 def cluster_changed():
     key = SwiftProxyClusterRPC.KEY_NOTIFY_LEADER_CHANGED
     leader_changed = relation_get(attribute=key)
@@ -481,9 +486,10 @@ def configure_https():
     if os.path.exists('/usr/sbin/a2enconf'):
         check_call(['a2enconf', 'swift-rings'])
 
-    # TODO: improve this by checking if local CN certs are available
-    # first then checking reload status (see LP #1433114).
-    service_reload('apache2', restart_on_failure=True)
+    if not is_paused():
+        # TODO: improve this by checking if local CN certs are available
+        # first then checking reload status (see LP #1433114).
+        service_reload('apache2', restart_on_failure=True)
 
     for rid in relation_ids('identity-service'):
         keystone_joined(relid=rid)
