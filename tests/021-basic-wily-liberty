@@ -1,9 +1,9 @@
 #!/usr/bin/python
 
-"""Amulet tests on a basic swift-proxy deployment on vivid-kilo."""
+"""Amulet tests on a basic swift-proxy deployment on wily-liberty."""
 
 from basic_deployment import SwiftProxyBasicDeployment
 
 if __name__ == '__main__':
-    deployment = SwiftProxyBasicDeployment(series='vivid')
+    deployment = SwiftProxyBasicDeployment(series='wily')
     deployment.run_tests()

@@ -1,3 +1,4 @@
+import time
 import amulet
 import swiftclient
 
@@ -7,8 +8,7 @@ from charmhelpers.contrib.openstack.amulet.deployment import (
 
 from charmhelpers.contrib.openstack.amulet.utils import (
     OpenStackAmuletUtils,
-    DEBUG, # flake8: noqa
-    ERROR
+    DEBUG
 )
 
 # Use DEBUG to turn on debug logging
@@ -36,36 +36,46 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
            compatible with the local charm (e.g. stable or next).
            """
         this_service = {'name': 'swift-proxy'}
-        other_services = [{'name': 'mysql'}, {'name': 'keystone'},
-                          {'name': 'glance'}, {'name': 'swift-storage'}]
+        other_services = [{'name': 'mysql'},
+                          {'name': 'keystone'},
+                          {'name': 'glance'},
+                          {'name': 'swift-storage'}]
         super(SwiftProxyBasicDeployment, self)._add_services(this_service,
                                                              other_services)
 
     def _add_relations(self):
         """Add all of the relations for the services."""
         relations = {
-          'keystone:shared-db': 'mysql:shared-db',
-          'swift-proxy:identity-service': 'keystone:identity-service',
-          'swift-storage:swift-storage': 'swift-proxy:swift-storage',
-          'glance:identity-service': 'keystone:identity-service',
-          'glance:shared-db': 'mysql:shared-db',
-          'glance:object-store': 'swift-proxy:object-store'
+            'keystone:shared-db': 'mysql:shared-db',
+            'swift-proxy:identity-service': 'keystone:identity-service',
+            'swift-storage:swift-storage': 'swift-proxy:swift-storage',
+            'glance:identity-service': 'keystone:identity-service',
+            'glance:shared-db': 'mysql:shared-db',
+            'glance:object-store': 'swift-proxy:object-store'
         }
         super(SwiftProxyBasicDeployment, self)._add_relations(relations)
 
     def _configure_services(self):
         """Configure all of the services."""
-        keystone_config = {'admin-password': 'openstack',
-                           'admin-token': 'ubuntutesting'}
-        swift_proxy_config = {'zone-assignment': 'manual',
-                           'replicas': '1',
-                           'swift-hash': 'fdfef9d4-8b06-11e2-8ac0-531c923c8fae'}
-        swift_storage_config = {'zone': '1',
-                                'block-device': 'vdb',
-                                'overwrite': 'true'}
-        configs = {'keystone': keystone_config,
-                   'swift-proxy': swift_proxy_config,
-                   'swift-storage': swift_storage_config}
+        keystone_config = {
+            'admin-password': 'openstack',
+            'admin-token': 'ubuntutesting'
+        }
+        swift_proxy_config = {
+            'zone-assignment': 'manual',
+            'replicas': '1',
+            'swift-hash': 'fdfef9d4-8b06-11e2-8ac0-531c923c8fae'
+        }
+        swift_storage_config = {
+            'zone': '1',
+            'block-device': 'vdb',
+            'overwrite': 'true'
+        }
+        configs = {
+            'keystone': keystone_config,
+            'swift-proxy': swift_proxy_config,
+            'swift-storage': swift_storage_config
+        }
         super(SwiftProxyBasicDeployment, self)._configure_services(configs)
 
     def _initialize_tests(self):
@@ -77,6 +87,14 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         self.swift_proxy_sentry = self.d.sentry.unit['swift-proxy/0']
         self.swift_storage_sentry = self.d.sentry.unit['swift-storage/0']
 
+        u.log.debug('openstack release val: {}'.format(
+            self._get_openstack_release()))
+        u.log.debug('openstack release str: {}'.format(
+            self._get_openstack_release_string()))
+
+        # Let things settle a bit before moving forward
+        time.sleep(30)
+
         # Authenticate admin with keystone
         self.keystone = u.authenticate_keystone_admin(self.keystone_sentry,
                                                       user='admin',
@@ -87,15 +105,16 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         self.glance = u.authenticate_glance_admin(self.keystone)
 
         # Authenticate swift user
-        keystone_relation = self.keystone_sentry.relation('identity-service',
-                                                 'swift-proxy:identity-service')
+        keystone_relation = self.keystone_sentry.relation(
+            'identity-service', 'swift-proxy:identity-service')
         ep = self.keystone.service_catalog.url_for(service_type='identity',
                                                    endpoint_type='publicURL')
-        self.swift = swiftclient.Connection(authurl=ep,
-                                user=keystone_relation['service_username'],
-                                key=keystone_relation['service_password'],
-                                tenant_name=keystone_relation['service_tenant'],
-                                auth_version='2.0')
+        self.swift = swiftclient.Connection(
+            authurl=ep,
+            user=keystone_relation['service_username'],
+            key=keystone_relation['service_password'],
+            tenant_name=keystone_relation['service_tenant'],
+            auth_version='2.0')
 
         # Create a demo tenant/role/user
         self.demo_tenant = 'demoTenant'
@@ -117,38 +136,39 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                                          password='password',
                                          tenant=self.demo_tenant)
 
-    def test_services(self):
+    def test_100_services(self):
         """Verify the expected services are running on the corresponding
            service units."""
-        swift_storage_services = ['status swift-account',
-                                  'status swift-account-auditor',
-                                  'status swift-account-reaper',
-                                  'status swift-account-replicator',
-                                  'status swift-container',
-                                  'status swift-container-auditor',
-                                  'status swift-container-replicator',
-                                  'status swift-container-updater',
-                                  'status swift-object',
-                                  'status swift-object-auditor',
-                                  'status swift-object-replicator',
-                                  'status swift-object-updater']
-        if self._get_openstack_release() >= self.precise_icehouse:
-            swift_storage_services.append('status swift-container-sync')
-
-        commands = {
-            self.mysql_sentry: ['status mysql'],
-            self.keystone_sentry: ['status keystone'],
-            self.glance_sentry: ['status glance-registry', 'status glance-api'],
-            self.swift_proxy_sentry: ['status swift-proxy'],
+        u.log.debug('Checking system services...')
+        swift_storage_services = ['swift-account',
+                                  'swift-account-auditor',
+                                  'swift-account-reaper',
+                                  'swift-account-replicator',
+                                  'swift-container',
+                                  'swift-container-auditor',
+                                  'swift-container-replicator',
+                                  'swift-container-updater',
+                                  'swift-object',
+                                  'swift-object-auditor',
+                                  'swift-object-replicator',
+                                  'swift-object-updater',
+                                  'swift-container-sync']
+        service_names = {
+            self.mysql_sentry: ['mysql'],
+            self.keystone_sentry: ['keystone'],
+            self.glance_sentry: ['glance-registry',
+                                 'glance-api'],
+            self.swift_proxy_sentry: ['swift-proxy'],
             self.swift_storage_sentry: swift_storage_services
         }
 
-        ret = u.validate_services(commands)
+        ret = u.validate_services_by_name(service_names)
         if ret:
             amulet.raise_status(amulet.FAIL, msg=ret)
 
-    def test_users(self):
+    def test_102_users(self):
         """Verify all existing roles."""
+        u.log.debug('Checking keystone users...')
         user1 = {'name': 'demoUser',
                  'enabled': True,
                  'tenantId': u.not_null,
@@ -176,19 +196,15 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         if ret:
             amulet.raise_status(amulet.FAIL, msg=ret)
 
-    def test_service_catalog(self):
+    def test_104_keystone_service_catalog(self):
         """Verify that the service catalog endpoint data is valid."""
-        endpoint_vol = {'adminURL': u.valid_url,
-                        'region': 'RegionOne',
-                        'publicURL': u.valid_url,
-                        'internalURL': u.valid_url}
+        u.log.debug('Checking keystone service catalog...')
         endpoint_id = {'adminURL': u.valid_url,
                        'region': 'RegionOne',
                        'publicURL': u.valid_url,
-                       'internalURL': u.valid_url}
-        if self._get_openstack_release() >= self.precise_folsom:
-            endpoint_vol['id'] = u.not_null
-            endpoint_id['id'] = u.not_null
+                       'internalURL': u.valid_url,
+                       'id': u.not_null}
+
         expected = {'image': [endpoint_id], 'object-store': [endpoint_id],
                     'identity': [endpoint_id]}
         actual = self.keystone_demo.service_catalog.get_endpoints()
@@ -197,8 +213,9 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         if ret:
             amulet.raise_status(amulet.FAIL, msg=ret)
 
-    def test_openstack_object_store_endpoint(self):
+    def test_106_swift_object_store_endpoint(self):
         """Verify the swift object-store endpoint data."""
+        u.log.debug('Checking keystone endpoint for swift object store...')
         endpoints = self.keystone.endpoints.list()
         admin_port = internal_port = public_port = '8080'
         expected = {'id': u.not_null,
@@ -214,8 +231,9 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             message = 'object-store endpoint: {}'.format(ret)
             amulet.raise_status(amulet.FAIL, msg=message)
 
-    def test_swift_proxy_identity_service_relation(self):
-        """Verify the swift-proxy to keystone identity-service relation data."""
+    def test_200_swift_proxy_identity_service_relation(self):
+        """Verify the swift-proxy to keystone identity relation data."""
+        u.log.debug('Checking swift-proxy:keystone identity relation...')
         unit = self.swift_proxy_sentry
         relation = ['identity-service', 'keystone:identity-service']
         expected = {
@@ -233,8 +251,9 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             message = u.relation_error('swift-proxy identity-service', ret)
             amulet.raise_status(amulet.FAIL, msg=message)
 
-    def test_keystone_identity_service_relation(self):
-        """Verify the keystone to swift-proxy identity-service relation data."""
+    def test_202_keystone_identity_service_relation(self):
+        """Verify the keystone to swift-proxy identity relation data."""
+        u.log.debug('Checking keystone:swift-proxy identity relation...')
         unit = self.keystone_sentry
         relation = ['identity-service', 'swift-proxy:identity-service']
         expected = {
@@ -257,9 +276,10 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             message = u.relation_error('keystone identity-service', ret)
             amulet.raise_status(amulet.FAIL, msg=message)
 
-    def test_swift_storage_swift_storage_relation(self):
+    def test_204_swift_storage_swift_storage_relation(self):
         """Verify the swift-storage to swift-proxy swift-storage relation
            data."""
+        u.log.debug('Checking swift:swift-proxy swift-storage relation...')
         unit = self.swift_storage_sentry
         relation = ['swift-storage', 'swift-proxy:swift-storage']
         expected = {
@@ -276,9 +296,10 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             message = u.relation_error('swift-storage swift-storage', ret)
             amulet.raise_status(amulet.FAIL, msg=message)
 
-    def test_swift_proxy_swift_storage_relation(self):
+    def test_206_swift_proxy_swift_storage_relation(self):
         """Verify the swift-proxy to swift-storage swift-storage relation
            data."""
+        u.log.debug('Checking swift-proxy:swift swift-storage relation...')
         unit = self.swift_proxy_sentry
         relation = ['swift-storage', 'swift-storage:swift-storage']
         expected = {
@@ -293,19 +314,21 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             message = u.relation_error('swift-proxy swift-storage', ret)
             amulet.raise_status(amulet.FAIL, msg=message)
 
-    def test_glance_object_store_relation(self):
+    def test_208_glance_object_store_relation(self):
         """Verify the glance to swift-proxy object-store relation data."""
+        u.log.debug('Checking glance:swift-proxy object-store relation...')
         unit = self.glance_sentry
         relation = ['object-store', 'swift-proxy:object-store']
-        expected = { 'private-address': u.valid_ip }
+        expected = {'private-address': u.valid_ip}
 
         ret = u.validate_relation_data(unit, relation, expected)
         if ret:
             message = u.relation_error('glance object-store', ret)
             amulet.raise_status(amulet.FAIL, msg=message)
 
-    def test_swift_proxy_object_store_relation(self):
+    def test_210_swift_proxy_object_store_relation(self):
         """Verify the swift-proxy to glance object-store relation data."""
+        u.log.debug('Checking swift-proxy:glance object-store relation...')
         unit = self.swift_proxy_sentry
         relation = ['object-store', 'glance:object-store']
         expected = {'private-address': u.valid_ip}
@@ -314,26 +337,229 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             message = u.relation_error('swift-proxy object-store', ret)
             amulet.raise_status(amulet.FAIL, msg=message)
 
-    def test_z_restart_on_config_change(self):
-        """Verify that the specified services are restarted when the config
-           is changed.
+    def test_300_swift_config(self):
+        """Verify the data in the swift-hash section of the swift config
+           file."""
+        u.log.debug('Checking swift config...')
+        unit = self.swift_storage_sentry
+        conf = '/etc/swift/swift.conf'
+        swift_proxy_relation = self.swift_proxy_sentry.relation(
+            'swift-storage', 'swift-storage:swift-storage')
+        expected = {
+            'swift_hash_path_suffix': swift_proxy_relation['swift_hash']
+        }
 
-           Note(coreycb): The method name with the _z_ is a little odd
-           but it forces the test to run last.  It just makes things
-           easier because restarting services requires re-authorization.
-           """
-        svc = 'swift-proxy'
-        self.d.configure('swift-proxy', {'node-timeout': '90'})
+        ret = u.validate_config_data(unit, conf, 'swift-hash', expected)
+        if ret:
+            message = "swift config error: {}".format(ret)
+            amulet.raise_status(amulet.FAIL, msg=message)
 
-        if not u.service_restarted(self.swift_proxy_sentry, svc,
-                                   '/etc/swift/proxy-server.conf'):
-            self.d.configure('swift-proxy', {'node-timeout': '60'})
-            msg = "service {} didn't restart after config change".format(svc)
+    def test_302_proxy_server_config(self):
+        """Verify the data in the proxy-server config file."""
+        u.log.debug('Checking swift proxy-server config...')
+        unit = self.swift_proxy_sentry
+        conf = '/etc/swift/proxy-server.conf'
+        keystone_relation = self.keystone_sentry.relation(
+            'identity-service', 'swift-proxy:identity-service')
+        swift_proxy_relation = unit.relation(
+            'identity-service', 'keystone:identity-service')
+        swift_proxy_ip = swift_proxy_relation['private-address']
+        auth_host = keystone_relation['auth_host']
+        auth_protocol = keystone_relation['auth_protocol']
+
+        expected = {
+            'DEFAULT': {
+                'bind_port': '8070',
+                'user': 'swift',
+                'log_name': 'swift',
+                'log_facility': 'LOG_LOCAL0',
+                'log_level': 'INFO',
+                'log_headers': 'False',
+                'log_address': '/dev/log'
+            },
+            'pipeline:main': {
+                'pipeline': 'gatekeeper healthcheck proxy-logging cache '
+                            'swift3 s3token container_sync bulk tempurl '
+                            'slo dlo formpost authtoken keystoneauth '
+                            'staticweb container-quotas account-quotas '
+                            'proxy-logging proxy-server'
+            },
+            'app:proxy-server': {
+                'use': 'egg:swift#proxy',
+                'allow_account_management': 'true',
+                'account_autocreate': 'true',
+                'node_timeout': '60',
+                'recoverable_node_timeout': '30'
+            },
+            'filter:tempauth': {
+                'use': 'egg:swift#tempauth',
+                'user_system_root': 'testpass .admin https://{}:8080/v1/'
+                                    'AUTH_system'.format(swift_proxy_ip)
+            },
+            'filter:healthcheck': {'use': 'egg:swift#healthcheck'},
+            'filter:cache': {
+                'use': 'egg:swift#memcache',
+                'memcache_servers': '{}:11211'.format(swift_proxy_ip)
+            },
+            'filter:account-quotas': {'use': 'egg:swift#account_quotas'},
+            'filter:container-quotas': {'use': 'egg:swift#container_quotas'},
+            'filter:proxy-logging': {'use': 'egg:swift#proxy_logging'},
+            'filter:staticweb': {'use': 'egg:swift#staticweb'},
+            'filter:bulk': {'use': 'egg:swift#bulk'},
+            'filter:slo': {'use': 'egg:swift#slo'},
+            'filter:dlo': {'use': 'egg:swift#dlo'},
+            'filter:formpost': {'use': 'egg:swift#formpost'},
+            'filter:tempurl': {'use': 'egg:swift#tempurl'},
+            'filter:container_sync': {'use': 'egg:swift#container_sync'},
+            'filter:gatekeeper': {'use': 'egg:swift#gatekeeper'},
+            'filter:keystoneauth': {
+                'use': 'egg:swift#keystoneauth',
+                'operator_roles': 'Member,Admin'
+            },
+            'filter:authtoken': {
+                'auth_uri': '{}://{}:{}'.format(
+                    auth_protocol,
+                    auth_host,
+                    keystone_relation['service_port']),
+                'admin_tenant_name': keystone_relation['service_tenant'],
+                'admin_user': keystone_relation['service_username'],
+                'admin_password': keystone_relation['service_password'],
+                'delay_auth_decision': 'true',
+                'signing_dir': '/var/cache/swift',
+                'cache': 'swift.cache'
+            },
+            'filter:swift3': {'use': 'egg:swift3#swift3'}
+        }
+
+        if self._get_openstack_release() >= self.trusty_kilo:
+            # Kilo and later
+            expected['filter:authtoken'].update({
+                'paste.filter_factory': 'keystonemiddleware.auth_token:'
+                                        'filter_factory',
+                'identity_uri': '{}://{}:{}'.format(
+                    auth_protocol,
+                    auth_host,
+                    keystone_relation['auth_port']),
+            })
+            expected['filter:s3token'] = {
+                # No section commonality with J and earlier
+                'paste.filter_factory': 'keystonemiddleware.s3_token'
+                                        ':filter_factory',
+                'auth_uri': '{}://{}:{}'.format(
+                    auth_protocol,
+                    auth_host,
+                    keystone_relation['service_port']),
+                'identity_uri': '{}://{}:{}'.format(
+                    auth_protocol,
+                    auth_host,
+                    keystone_relation['auth_port']),
+            }
+        else:
+            # Juno and earlier
+            expected['filter:authtoken'].update({
+                'paste.filter_factory': 'keystoneclient.middleware.'
+                                        'auth_token:filter_factory',
+                'auth_host': auth_host,
+                'auth_port': keystone_relation['auth_port'],
+                'auth_protocol': auth_protocol,
+            })
+            expected['filter:s3token'] = {
+                # No section commonality with K and later
+                'paste.filter_factory': 'keystoneclient.middleware.'
+                                        's3_token:filter_factory',
+                'auth_port': keystone_relation['auth_port'],
+                'auth_host': keystone_relation['auth_host'],
+                'service_host': keystone_relation['service_host'],
+                'service_port': keystone_relation['service_port'],
+                'auth_protocol': keystone_relation['auth_protocol'],
+                'auth_token': keystone_relation['admin_token'],
+                'admin_token': keystone_relation['admin_token']
+            }
+
+        for section, pairs in expected.iteritems():
+            ret = u.validate_config_data(unit, conf, section, pairs)
+            if ret:
+                message = "proxy-server config error: {}".format(ret)
+                amulet.raise_status(amulet.FAIL, msg=message)
+
+    def test_400_swift_backed_image_create(self):
+        """Create an instance in glance, which is backed by swift, and validate
+        that some of the metadata for the image match in glance and swift."""
+        u.log.debug('Checking swift objects and containers with a '
+                    'swift-backed glance image...')
+
+        # Create swift-backed glance image
+        img_new = u.create_cirros_image(self.glance, "cirros-image-1")
+        img_id = img_new.id
+        img_md5 = img_new.checksum
+        img_size = img_new.size
+
+        # Validate that swift object's checksum/size match that from glance
+        headers, containers = self.swift.get_account()
+        if len(containers) != 1:
+            msg = "Expected 1 swift container, found {}".format(
+                len(containers))
             amulet.raise_status(amulet.FAIL, msg=msg)
 
-        self.d.configure('swift-proxy', {'node-timeout': '60'})
+        container_name = containers[0].get('name')
 
-    def test_z_no_restart_on_config_change_when_paused(self):
+        headers, objects = self.swift.get_container(container_name)
+        if len(objects) != 1:
+            msg = "Expected 1 swift object, found {}".format(len(objects))
+            amulet.raise_status(amulet.FAIL, msg=msg)
+
+        swift_object_size = objects[0].get('bytes')
+        swift_object_md5 = objects[0].get('hash')
+
+        if img_size != swift_object_size:
+            msg = "Glance image size {} != swift object size {}".format(
+                img_size, swift_object_size)
+            amulet.raise_status(amulet.FAIL, msg=msg)
+
+        if img_md5 != swift_object_md5:
+            msg = "Glance image hash {} != swift object hash {}".format(
+                img_md5, swift_object_md5)
+            amulet.raise_status(amulet.FAIL, msg=msg)
+
+        # Cleanup
+        u.delete_resource(self.glance.images, img_id, msg="glance image")
+        u.log.info('OK')
+
+    def test_900_restart_on_config_change(self):
+        """Verify that the specified services are restarted when the config
+           is changed."""
+        u.log.info('Checking that conf files and system services respond '
+                   'to a charm config change...')
+
+        sentry = self.swift_proxy_sentry
+        juju_service = 'swift-proxy'
+
+        # Process names, corresponding conf files
+        services = {'swift-proxy-server': '/etc/swift/proxy-server.conf'}
+
+        # Expected default and alternate values
+        set_default = {'node-timeout': '60'}
+        set_alternate = {'node-timeout': '90'}
+
+        # Make config change, check for service restarts
+        u.log.debug('Making config change on {}...'.format(juju_service))
+        mtime = u.get_sentry_time(sentry)
+        self.d.configure(juju_service, set_alternate)
+
+        sleep_time = 40
+        for s, conf_file in services.iteritems():
+            u.log.debug("Checking that service restarted: {}".format(s))
+            if not u.validate_service_config_changed(sentry, mtime, s,
+                                                     conf_file,
+                                                     sleep_time=sleep_time):
+                self.d.configure(juju_service, set_default)
+                msg = "service {} didn't restart after config change".format(s)
+                amulet.raise_status(amulet.FAIL, msg=msg)
+            sleep_time = 0
+
+        self.d.configure(juju_service, set_default)
+
+    def test_901_no_restart_on_config_change_when_paused(self):
         """Verify that the specified services are not restarted when the config
            is changed and the unit is paused."""
         u.log.info('Checking that system services do not get restarted  '
@@ -414,508 +640,8 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                    " (got {} instead)".format(message))
             amulet.raise_status(amulet.FAIL, msg=msg)
 
-    def test_z_pause_resume_actions(self):
+    def test_902_pause_resume_actions(self):
         """Pause and then resume swift-proxy."""
         u.log.debug('Checking pause/resume actions...')
         self._test_pause()
         self._test_resume()
-
-    def test_swift_config(self):
-        """Verify the data in the swift config file."""
-        unit = self.swift_proxy_sentry
-        conf = '/etc/swift/swift.conf'
-        swift_proxy_relation = unit.relation('swift-storage',
-                                             'swift-storage:swift-storage')
-        expected = {
-            'swift_hash_path_suffix': swift_proxy_relation['swift_hash']
-        }
-
-        ret = u.validate_config_data(unit, conf, 'swift-hash', expected)
-        if ret:
-            message = "swift config error: {}".format(ret)
-            amulet.raise_status(amulet.FAIL, msg=message)
-
-    def test_proxy_server_icehouse_config(self):
-        """Verify the data in the proxy-server config file."""
-        if self._get_openstack_release() < self.precise_icehouse:
-            return
-
-        unit = self.swift_proxy_sentry
-        conf = '/etc/swift/proxy-server.conf'
-        keystone_relation = self.keystone_sentry.relation('identity-service',
-                                                 'swift-proxy:identity-service')
-        swift_proxy_relation = unit.relation('identity-service',
-                                             'keystone:identity-service')
-        swift_proxy_ip = swift_proxy_relation['private-address']
-        auth_host = keystone_relation['auth_host']
-        auth_protocol = keystone_relation['auth_protocol']
-
-        expected = {
-            'DEFAULT': {
-                'bind_port': '8070',
-                'user': 'swift',
-                'log_name': 'swift',
-                'log_facility': 'LOG_LOCAL0',
-                'log_level': 'INFO',
-                'log_headers': 'False',
-                'log_address': '/dev/log'
-            },
-            'pipeline:main': {
-                'pipeline': 'gatekeeper healthcheck proxy-logging cache swift3 '
-                            's3token container_sync bulk tempurl slo dlo '
-                            'formpost authtoken keystoneauth staticweb '
-                            'container-quotas account-quotas proxy-logging '
-                            'proxy-server'
-            },
-            'app:proxy-server': {
-                'use': 'egg:swift#proxy',
-                'allow_account_management': 'true',
-                'account_autocreate': 'true',
-                'node_timeout': '60',
-                'recoverable_node_timeout': '30'
-            },
-            'filter:tempauth': {
-                'use': 'egg:swift#tempauth',
-                'user_system_root': 'testpass .admin https://{}:8080/v1/'
-                                    'AUTH_system'.format(swift_proxy_ip)
-            },
-            'filter:healthcheck': {'use': 'egg:swift#healthcheck'},
-            'filter:cache': {
-                'use': 'egg:swift#memcache',
-                'memcache_servers': '{}:11211'.format(swift_proxy_ip)
-            },
-            'filter:account-quotas': {'use': 'egg:swift#account_quotas'},
-            'filter:container-quotas': {'use': 'egg:swift#container_quotas'},
-            'filter:proxy-logging': {'use': 'egg:swift#proxy_logging'},
-            'filter:staticweb': {'use': 'egg:swift#staticweb'},
-            'filter:bulk': {'use': 'egg:swift#bulk'},
-            'filter:slo': {'use': 'egg:swift#slo'},
-            'filter:dlo': {'use': 'egg:swift#dlo'},
-            'filter:formpost': {'use': 'egg:swift#formpost'},
-            'filter:tempurl': {'use': 'egg:swift#tempurl'},
-            'filter:container_sync': {'use': 'egg:swift#container_sync'},
-            'filter:gatekeeper': {'use': 'egg:swift#gatekeeper'},
-            'filter:keystoneauth': {
-                'use': 'egg:swift#keystoneauth',
-                'operator_roles': 'Member,Admin'
-            },
-            'filter:authtoken': {
-                'paste.filter_factory': 'keystoneclient.middleware.'
-                                        'auth_token:filter_factory',
-                'auth_host': auth_host,
-                'auth_port': keystone_relation['auth_port'],
-                'auth_protocol': auth_protocol,
-                'auth_uri': '{}://{}:{}'.format(auth_protocol, auth_host,
-                                             keystone_relation['service_port']),
-                'admin_tenant_name': keystone_relation['service_tenant'],
-                'admin_user': keystone_relation['service_username'],
-                'admin_password': keystone_relation['service_password'],
-                'delay_auth_decision': 'true',
-                'signing_dir': '/var/cache/swift',
-                'cache': 'swift.cache'
-            },
-            'filter:s3token': {
-                'paste.filter_factory': 'keystoneclient.middleware.'
-                                        's3_token:filter_factory',
-                'service_host': keystone_relation['service_host'],
-                'service_port': keystone_relation['service_port'],
-                'auth_port': keystone_relation['auth_port'],
-                'auth_host': keystone_relation['auth_host'],
-                'auth_protocol': keystone_relation['auth_protocol'],
-                'auth_token': keystone_relation['admin_token'],
-                'admin_token': keystone_relation['admin_token']
-            },
-            'filter:swift3': {'use': 'egg:swift3#swift3'}
-        }
-
-        for section, pairs in expected.iteritems():
-            ret = u.validate_config_data(unit, conf, section, pairs)
-            if ret:
-                message = "proxy-server config error: {}".format(ret)
-                amulet.raise_status(amulet.FAIL, msg=message)
-
-    def test_proxy_server_havana_config(self):
-        """Verify the data in the proxy-server config file."""
-        if self._get_openstack_release() != self.precise_havana:
-            return
-
-        unit = self.swift_proxy_sentry
-        conf = '/etc/swift/proxy-server.conf'
-        keystone_relation = self.keystone_sentry.relation('identity-service',
-                                                 'swift-proxy:identity-service')
-        swift_proxy_relation = unit.relation('identity-service',
-                                             'keystone:identity-service')
-        swift_proxy_ip = swift_proxy_relation['private-address']
-        auth_host = keystone_relation['auth_host']
-        auth_protocol = keystone_relation['auth_protocol']
-
-        expected = {
-            'DEFAULT': {
-                'bind_port': '8070',
-                'user': 'swift'
-            },
-            'pipeline:main': {
-                'pipeline': 'healthcheck cache swift3 authtoken '
-                            'keystoneauth container-quotas account-quotas '
-                            'proxy-server'
-            },
-            'app:proxy-server': {
-                'use': 'egg:swift#proxy',
-                'allow_account_management': 'true',
-                'account_autocreate': 'true',
-                'node_timeout': '60',
-                'recoverable_node_timeout': '30'
-            },
-            'filter:tempauth': {
-                'use': 'egg:swift#tempauth',
-                'user_system_root': 'testpass .admin https://{}:8080/v1/'
-                                    'AUTH_system'.format(swift_proxy_ip)
-            },
-            'filter:healthcheck': {'use': 'egg:swift#healthcheck'},
-            'filter:cache': {
-                'use': 'egg:swift#memcache',
-                'memcache_servers': '{}:11211'.format(swift_proxy_ip)
-            },
-            'filter:account-quotas': {'use': 'egg:swift#account_quotas'},
-            'filter:container-quotas': {'use': 'egg:swift#container_quotas'},
-            'filter:keystoneauth': {
-                'use': 'egg:swift#keystoneauth',
-                'operator_roles': 'Member,Admin'
-            },
-            'filter:authtoken': {
-                'paste.filter_factory': 'keystoneclient.middleware.'
-                                        'auth_token:filter_factory',
-                'auth_host': auth_host,
-                'auth_port': keystone_relation['auth_port'],
-                'auth_protocol': auth_protocol,
-                'auth_uri': '{}://{}:{}'.format(auth_protocol, auth_host,
-                                             keystone_relation['service_port']),
-                'admin_tenant_name': keystone_relation['service_tenant'],
-                'admin_user': keystone_relation['service_username'],
-                'admin_password': keystone_relation['service_password'],
-                'delay_auth_decision': 'true',
-                'signing_dir': '/var/cache/swift',
-                'cache': 'swift.cache'
-            },
-            'filter:s3token': {
-                'paste.filter_factory': 'keystone.middleware.s3_token:'
-                                        'filter_factory',
-                'service_host': keystone_relation['service_host'],
-                'service_port': keystone_relation['service_port'],
-                'auth_port': keystone_relation['auth_port'],
-                'auth_host': keystone_relation['auth_host'],
-                'auth_protocol': keystone_relation['auth_protocol'],
-                'auth_token': keystone_relation['admin_token'],
-                'admin_token': keystone_relation['admin_token'],
-                'service_protocol': keystone_relation['service_protocol']
-            },
-            'filter:swift3': {'use': 'egg:swift3#swift3'}
-        }
-
-        for section, pairs in expected.iteritems():
-            ret = u.validate_config_data(unit, conf, section, pairs)
-            if ret:
-                message = "proxy-server config error: {}".format(ret)
-                amulet.raise_status(amulet.FAIL, msg=message)
-
-    def test_proxy_server_grizzly_config(self):
-        """Verify the data in the proxy-server config file."""
-        if self._get_openstack_release() != self.precise_grizzly:
-            return
-
-        unit = self.swift_proxy_sentry
-        conf = '/etc/swift/proxy-server.conf'
-        keystone_relation = self.keystone_sentry.relation('identity-service',
-                                                 'swift-proxy:identity-service')
-        swift_proxy_relation = unit.relation('identity-service',
-                                             'keystone:identity-service')
-        swift_proxy_ip = swift_proxy_relation['private-address']
-        auth_host = keystone_relation['auth_host']
-        auth_protocol = keystone_relation['auth_protocol']
-
-        expected = {
-            'DEFAULT': {
-                'bind_port': '8070',
-                'user': 'swift'
-            },
-            'pipeline:main': {
-                'pipeline': 'healthcheck cache swift3 s3token authtoken '
-                            'keystone container-quotas account-quotas '
-                            'proxy-server'
-            },
-            'app:proxy-server': {
-                'use': 'egg:swift#proxy',
-                'allow_account_management': 'true',
-                'account_autocreate': 'true',
-                'node_timeout': '60',
-                'recoverable_node_timeout': '30'
-            },
-            'filter:tempauth': {
-                'use': 'egg:swift#tempauth',
-                'user_system_root': 'testpass .admin https://{}:8080/v1/'
-                                    'AUTH_system'.format(swift_proxy_ip)
-            },
-            'filter:healthcheck': {'use': 'egg:swift#healthcheck'},
-            'filter:cache': {
-                'use': 'egg:swift#memcache',
-                'memcache_servers': '{}:11211'.format(swift_proxy_ip)
-            },
-            'filter:account-quotas': {'use': 'egg:swift#account_quotas'},
-            'filter:container-quotas': {'use': 'egg:swift#container_quotas'},
-            'filter:keystone': {
-                'paste.filter_factory': 'swift.common.middleware.'
-                                        'keystoneauth:filter_factory',
-                'operator_roles': 'Member,Admin'
-            },
-            'filter:authtoken': {
-                'paste.filter_factory': 'keystone.middleware.auth_token:'
-                                        'filter_factory',
-                'auth_host': auth_host,
-                'auth_port': keystone_relation['auth_port'],
-                'auth_protocol': auth_protocol,
-                'auth_uri': '{}://{}:{}'.format(auth_protocol, auth_host,
-                                             keystone_relation['service_port']),
-                'admin_tenant_name': keystone_relation['service_tenant'],
-                'admin_user': keystone_relation['service_username'],
-                'admin_password': keystone_relation['service_password'],
-                'delay_auth_decision': 'true',
-                'signing_dir': '/var/cache/swift'
-            },
-            'filter:s3token': {
-                'paste.filter_factory': 'keystone.middleware.s3_token:'
-                                        'filter_factory',
-                'service_host': keystone_relation['service_host'],
-                'service_port': keystone_relation['service_port'],
-                'auth_port': keystone_relation['auth_port'],
-                'auth_host': keystone_relation['auth_host'],
-                'auth_protocol': keystone_relation['auth_protocol'],
-                'auth_token': keystone_relation['admin_token'],
-                'admin_token': keystone_relation['admin_token'],
-                'service_protocol': keystone_relation['service_protocol']
-            },
-            'filter:swift3': {'use': 'egg:swift3#swift3'}
-        }
-
-        for section, pairs in expected.iteritems():
-            ret = u.validate_config_data(unit, conf, section, pairs)
-            if ret:
-                message = "proxy-server config error: {}".format(ret)
-                amulet.raise_status(amulet.FAIL, msg=message)
-
-    def test_proxy_server_folsom_config(self):
-        """Verify the data in the proxy-server config file."""
-        if self._get_openstack_release() != self.precise_folsom:
-            return
-
-        unit = self.swift_proxy_sentry
-        conf = '/etc/swift/proxy-server.conf'
-        keystone_relation = self.keystone_sentry.relation('identity-service',
-                                                 'swift-proxy:identity-service')
-        swift_proxy_relation = unit.relation('identity-service',
-                                             'keystone:identity-service')
-        swift_proxy_ip = swift_proxy_relation['private-address']
-        auth_host = keystone_relation['auth_host']
-        auth_protocol = keystone_relation['auth_protocol']
-
-        expected = {
-            'DEFAULT': {
-                'bind_port': '8070',
-                'user': 'swift'
-            },
-            'pipeline:main': {
-                'pipeline': 'healthcheck cache swift3 s3token authtoken '
-                            'keystone proxy-server'
-            },
-            'app:proxy-server': {
-                'use': 'egg:swift#proxy',
-                'allow_account_management': 'true',
-                'account_autocreate': 'true',
-                'node_timeout': '60',
-                'recoverable_node_timeout': '30'
-            },
-            'filter:tempauth': {
-                'use': 'egg:swift#tempauth',
-                'user_system_root': 'testpass .admin https://{}:8080/v1/'
-                                    'AUTH_system'.format(swift_proxy_ip)
-            },
-            'filter:healthcheck': {'use': 'egg:swift#healthcheck'},
-            'filter:cache': {
-                'use': 'egg:swift#memcache',
-                'memcache_servers': '{}:11211'.format(swift_proxy_ip)
-            },
-            'filter:keystone': {
-                'paste.filter_factory': 'keystone.middleware.swift_auth:'
-                                        'filter_factory',
-                'operator_roles': 'Member,Admin'
-            },
-            'filter:authtoken': {
-                'paste.filter_factory': 'keystone.middleware.auth_token:'
-                                        'filter_factory',
-                'auth_host': auth_host,
-                'auth_port': keystone_relation['auth_port'],
-                'auth_protocol': auth_protocol,
-                'auth_uri': '{}://{}:{}'.format(auth_protocol, auth_host,
-                                             keystone_relation['service_port']),
-                'admin_tenant_name': keystone_relation['service_tenant'],
-                'admin_user': keystone_relation['service_username'],
-                'admin_password': keystone_relation['service_password'],
-                'delay_auth_decision': '1'
-            },
-            'filter:s3token': {
-                'paste.filter_factory': 'keystone.middleware.s3_token:'
-                                        'filter_factory',
-                'service_host': keystone_relation['service_host'],
-                'service_port': keystone_relation['service_port'],
-                'auth_port': keystone_relation['auth_port'],
-                'auth_host': keystone_relation['auth_host'],
-                'auth_protocol': keystone_relation['auth_protocol'],
-                'auth_token': keystone_relation['admin_token'],
-                'admin_token': keystone_relation['admin_token'],
-                'service_protocol': keystone_relation['service_protocol']
-            },
-            'filter:swift3': {'use': 'egg:swift#swift3'}
-        }
-
-        for section, pairs in expected.iteritems():
-            ret = u.validate_config_data(unit, conf, section, pairs)
-            if ret:
-                message = "proxy-server config error: {}".format(ret)
-                amulet.raise_status(amulet.FAIL, msg=message)
-
-    def test_proxy_server_essex_config(self):
-        """Verify the data in the proxy-server config file."""
-        if self._get_openstack_release() != self.precise_essex:
-            return
-
-        unit = self.swift_proxy_sentry
-        conf = '/etc/swift/proxy-server.conf'
-        keystone_relation = self.keystone_sentry.relation('identity-service',
-                                                 'swift-proxy:identity-service')
-        swift_proxy_relation = unit.relation('identity-service',
-                                             'keystone:identity-service')
-        swift_proxy_ip = swift_proxy_relation['private-address']
-        auth_host = keystone_relation['auth_host']
-        auth_protocol = keystone_relation['auth_protocol']
-
-        expected = {
-            'DEFAULT': {
-                'bind_port': '8070',
-                'user': 'swift'
-            },
-            'pipeline:main': {
-                'pipeline': 'healthcheck cache swift3 s3token authtoken '
-                            'keystone proxy-server'
-            },
-            'app:proxy-server': {
-                'use': 'egg:swift#proxy',
-                'allow_account_management': 'true',
-                'account_autocreate': 'true',
-                'node_timeout': '60',
-                'recoverable_node_timeout': '30'
-            },
-            'filter:tempauth': {
-                'use': 'egg:swift#tempauth',
-                'user_system_root': 'testpass .admin https://{}:8080/v1/'
-                                    'AUTH_system'.format(swift_proxy_ip)
-            },
-            'filter:healthcheck': {'use': 'egg:swift#healthcheck'},
-            'filter:cache': {
-                'use': 'egg:swift#memcache',
-                'memcache_servers': '{}:11211'.format(swift_proxy_ip)
-            },
-            'filter:keystone': {
-                'paste.filter_factory': 'keystone.middleware.swift_auth:'
-                                        'filter_factory',
-                'operator_roles': 'Member,Admin'
-            },
-            'filter:authtoken': {
-                'paste.filter_factory': 'keystone.middleware.auth_token:'
-                                        'filter_factory',
-                'auth_host': auth_host,
-                'auth_port': keystone_relation['auth_port'],
-                'auth_protocol': auth_protocol,
-                'auth_uri': '{}://{}:{}'.format(auth_protocol, auth_host,
-                                         keystone_relation['service_port']),
-                'admin_tenant_name': keystone_relation['service_tenant'],
-                'admin_user': keystone_relation['service_username'],
-                'admin_password': keystone_relation['service_password'],
-                'delay_auth_decision': '1'
-            },
-            'filter:s3token': {
-                'paste.filter_factory': 'keystone.middleware.s3_token:'
-                                        'filter_factory',
-                'service_host': keystone_relation['service_host'],
-                'service_port': keystone_relation['service_port'],
-                'auth_port': keystone_relation['auth_port'],
-                'auth_host': keystone_relation['auth_host'],
-                'auth_protocol': keystone_relation['auth_protocol'],
-                'auth_token': keystone_relation['admin_token'],
-                'admin_token': keystone_relation['admin_token'],
-                'service_protocol': keystone_relation['service_protocol']
-            },
-            'filter:swift3': {'use': 'egg:swift#swift3'}
-        }
-
-        for section, pairs in expected.iteritems():
-            ret = u.validate_config_data(unit, conf, section, pairs)
-            if ret:
-                message = "proxy-server config error: {}".format(ret)
-                amulet.raise_status(amulet.FAIL, msg=message)
-
-    def test_image_create(self):
-        """Create an instance in glance, which is backed by swift, and validate
-           that some of the metadata for the image match in glance and swift."""
-        # NOTE(coreycb): Skipping failing test on folsom until resolved. On
-        #                folsom only, uploading an image to glance gets 400 Bad
-        #                Request - Error uploading image: (error): [Errno 111]
-        #                ECONNREFUSED (HTTP 400)
-        if self._get_openstack_release() == self.precise_folsom:
-            u.log.error("Skipping failing test until resolved")
-            return
-
-        # Create glance image
-        image = u.create_cirros_image(self.glance, "cirros-image")
-        if not image:
-            amulet.raise_status(amulet.FAIL, msg="Image create failed")
-
-        # Validate that cirros image exists in glance and get its checksum/size
-        images = list(self.glance.images.list())
-        if len(images) != 1:
-            msg = "Expected 1 glance image, found {}".format(len(images))
-            amulet.raise_status(amulet.FAIL, msg=msg)
-
-        if images[0].name != 'cirros-image':
-            message = "cirros image does not exist"
-            amulet.raise_status(amulet.FAIL, msg=message)
-
-        glance_image_md5 = image.checksum
-        glance_image_size = image.size
-
-        # Validate that swift object's checksum/size match that from glance
-        headers, containers = self.swift.get_account()
-        if len(containers) != 1:
-            msg = "Expected 1 swift container, found {}".format(len(containers))
-            amulet.raise_status(amulet.FAIL, msg=msg)
-
-        container_name = containers[0].get('name')
-
-        headers, objects = self.swift.get_container(container_name)
-        if len(objects) != 1:
-            msg = "Expected 1 swift object, found {}".format(len(objects))
-            amulet.raise_status(amulet.FAIL, msg=msg)
-
-        swift_object_size = objects[0].get('bytes')
-        swift_object_md5 = objects[0].get('hash')
-
-        if glance_image_size != swift_object_size:
-            msg = "Glance image size {} != swift object size {}".format( \
-                                           glance_image_size, swift_object_size)
-            amulet.raise_status(amulet.FAIL, msg=msg)
-
-        if glance_image_md5 != swift_object_md5:
-            msg = "Glance image hash {} != swift object hash {}".format( \
-                                             glance_image_md5, swift_object_md5)
-            amulet.raise_status(amulet.FAIL, msg=msg)
-
-        # Cleanup
-        u.delete_image(self.glance, image)
