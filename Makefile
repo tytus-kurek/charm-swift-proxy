@@ -2,7 +2,7 @@ PYTHON := /usr/bin/env python
 
 lint:
 	@flake8 --exclude hooks/charmhelpers,tests/charmhelpers \
-        hooks unit_tests tests lib
+        actions hooks unit_tests tests lib
 	@charm proof
 
 test:
