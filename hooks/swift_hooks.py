@@ -526,7 +526,7 @@ def main():
         hooks.execute(sys.argv)
     except UnregisteredHookError as e:
         log('Unknown hook {} - skipping.'.format(e), level=DEBUG)
-    assess_status()
+    assess_status(CONFIGS)
 
 
 if __name__ == '__main__':
