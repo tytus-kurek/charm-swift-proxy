@@ -33,7 +33,8 @@ from lib.swift_utils import (
     all_responses_equal,
     ensure_www_dir_permissions,
     is_paused,
-    pause_aware_restart_on_change
+    pause_aware_restart_on_change,
+    assess_status,
 )
 
 import charmhelpers.contrib.openstack.utils as openstack
@@ -56,6 +57,7 @@ from charmhelpers.core.hookenv import (
     ERROR,
     Hooks, UnregisteredHookError,
     open_port,
+    status_set,
 )
 from charmhelpers.core.host import (
     service_reload,
@@ -96,11 +98,13 @@ CONFIGS = register_configs()
 
 @hooks.hook('install.real')
 def install():
+    status_set('maintenance', 'Executing pre-install')
     execd_preinstall()
     src = config('openstack-origin')
     if src != 'distro':
         openstack.configure_installation_source(src)
 
+    status_set('maintenance', 'Installing apt packages')
     apt_update(fatal=True)
     rel = openstack.get_os_codename_install_source(src)
     pkgs = determine_packages(rel)
@@ -125,6 +129,7 @@ def install():
 @pause_aware_restart_on_change(restart_map())
 def config_changed():
     if config('prefer-ipv6'):
+        status_set('maintenance', 'Configuring ipv6')
         setup_ipv6()
 
     configure_https()
@@ -135,7 +140,9 @@ def config_changed():
     if not config('action-managed-upgrade') and \
             openstack.openstack_upgrade_available('python-swift'):
         do_openstack_upgrade(CONFIGS)
+        status_set('maintenance', 'Running openstack upgrade')
 
+    status_set('maintenance', 'Updating and balancing rings')
     update_rings(min_part_hours=config('min-hours'))
 
     if not config('disable-ring-balance') and is_elected_leader(SWIFT_HA_RES):
@@ -519,6 +526,7 @@ def main():
         hooks.execute(sys.argv)
     except UnregisteredHookError as e:
         log('Unknown hook {} - skipping.'.format(e), level=DEBUG)
+    assess_status()
 
 
 if __name__ == '__main__':
