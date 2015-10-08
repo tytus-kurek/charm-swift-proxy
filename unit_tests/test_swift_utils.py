@@ -75,15 +75,15 @@ class SwiftUtilsTestCase(unittest.TestCase):
         self.assertTrue(mock_set_min_hours.called)
         self.assertTrue(mock_balance_rings.called)
 
-    @mock.patch('swift_utils._load_builder')
-    @mock.patch('swift_utils.initialize_ring')
-    @mock.patch('swift_utils.get_broker_token')
-    @mock.patch('swift_utils.update_www_rings')
-    @mock.patch('swift_utils.get_builders_checksum')
-    @mock.patch('swift_utils.get_rings_checksum')
-    @mock.patch('swift_utils.balance_rings')
-    @mock.patch('swift_utils.log')
-    @mock.patch('swift_utils.is_elected_leader')
+    @mock.patch('lib.swift_utils._load_builder')
+    @mock.patch('lib.swift_utils.initialize_ring')
+    @mock.patch('lib.swift_utils.get_broker_token')
+    @mock.patch('lib.swift_utils.update_www_rings')
+    @mock.patch('lib.swift_utils.get_builders_checksum')
+    @mock.patch('lib.swift_utils.get_rings_checksum')
+    @mock.patch('lib.swift_utils.balance_rings')
+    @mock.patch('lib.swift_utils.log')
+    @mock.patch('lib.swift_utils.is_elected_leader')
     def test_update_rings_multiple_devs(self,
                                         mock_is_elected_leader,
                                         mock_log, mock_balance_rings,
