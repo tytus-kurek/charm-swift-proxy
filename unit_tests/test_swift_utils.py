@@ -234,3 +234,23 @@ class SwiftUtilsTestCase(unittest.TestCase):
     def test_is_paused_other_maintenance(self):
         fake_status_get = lambda: ("maintenance", "Hook")
         self.assertFalse(swift_utils.is_paused(status_get=fake_status_get))
+
+    @mock.patch('lib.swift_utils.status_set')
+    @mock.patch('lib.swift_utils.has_minimum_zones')
+    @mock.patch('lib.swift_utils.relation_ids')
+    def test_assess_status(self, relation_ids, has_min_zones, status_set):
+
+        relation_ids.return_value = []
+        swift_utils.assess_status()
+        status_set.assert_called_with('blocked', 'Missing relation: storage')
+
+        relation_ids.return_value = ['swift-storage:1']
+
+        has_min_zones.return_value = False
+        swift_utils.assess_status()
+        status_set.assert_called_with('blocked',
+                               'Not enough storage zones for minimum replicas')
+
+        has_min_zones.return_value = True
+        swift_utils.assess_status()
+        status_set.assert_called_with('active', 'Unit is ready')
