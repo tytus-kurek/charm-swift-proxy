@@ -26,7 +26,8 @@ from charmhelpers.contrib.openstack.utils import (
     os_release,
     get_os_codename_package,
     get_os_codename_install_source,
-    configure_installation_source
+    configure_installation_source,
+    set_os_workload_status,
 )
 from charmhelpers.contrib.hahelpers.cluster import (
     is_elected_leader,
@@ -1021,17 +1022,31 @@ def has_minimum_zones(rings):
     return True
 
 
-def assess_status():
+def assess_status(configs):
     """Assess status of current unit"""
+    required_interfaces = {}
+
     # Check for required swift-storage relation
     if len(relation_ids('swift-storage')) < 1:
         status_set('blocked', 'Missing relation: storage')
         return
 
+    # Verify allowed_hosts is populated with enough unit IP addresses
+    ctxt = SwiftRingContext()()
+    if len(ctxt['allowed_hosts']) < config('replicas'):
+        status_set('blocked', 'Not enough related storage nodes')
+        return
+
     # Verify there are enough storage zones to satisfy minimum replicas
     rings = [r for r in SWIFT_RINGS.itervalues()]
     if not has_minimum_zones(rings):
-        status_set('blocked',
-                   'Not enough storage zones for minimum replicas')
+        status_set('blocked', 'Not enough storage zones for minimum replicas')
+        return
+
+    if relation_ids('identity-service'):
+        required_interfaces['identity'] = ['identity-service']
+
+    if required_interfaces:
+        set_os_workload_status(configs, required_interfaces)
     else:
         status_set('active', 'Unit is ready')
