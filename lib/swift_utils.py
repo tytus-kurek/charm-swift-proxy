@@ -43,7 +43,8 @@ from charmhelpers.core.hookenv import (
     relation_set,
     relation_ids,
     related_units,
-    status_get
+    status_get,
+    status_set,
 )
 from charmhelpers.fetch import (
     apt_update,
@@ -547,17 +548,7 @@ def should_balance(rings):
     if config('disable-ring-balance'):
         return False
 
-    for ring in rings:
-        builder = _load_builder(ring).to_dict()
-        replicas = builder['replicas']
-        zones = [dev['zone'] for dev in builder['devs']]
-        num_zones = len(set(zones))
-        if num_zones < replicas:
-            log("Not enough zones (%d) defined to allow ring balance "
-                "(need >= %d)" % (num_zones, replicas), level=INFO)
-            return False
-
-    return True
+    return has_minimum_zones(rings)
 
 
 def do_openstack_upgrade(configs):
@@ -1013,3 +1004,34 @@ def pause_aware_restart_on_change(restart_map):
         else:
             return restart_on_change(restart_map)(f)
     return wrapper
+
+
+def has_minimum_zones(rings):
+    """Determine if enough zones exist to satisfy minimum replicas"""
+    for ring in rings:
+        builder = _load_builder(ring).to_dict()
+        replicas = builder['replicas']
+        zones = [dev['zone'] for dev in builder['devs']]
+        num_zones = len(set(zones))
+        if num_zones < replicas:
+            log("Not enough zones (%d) defined to satisfy minimum replicas "
+                "(need >= %d)" % (num_zones, replicas), level=INFO)
+            return False
+
+    return True
+
+
+def assess_status():
+    """Assess status of current unit"""
+    # Check for required swift-storage relation
+    if len(relation_ids('swift-storage')) < 1:
+        status_set('blocked', 'Missing relation: storage')
+        return
+
+    # Verify there are enough storage zones to satisfy minimum replicas
+    rings = [r for r in SWIFT_RINGS.itervalues()]
+    if not has_minimum_zones(rings):
+        status_set('blocked',
+                   'Not enough storage zones for minimum replicas')
+    else:
+        status_set('active', 'Unit is ready')
