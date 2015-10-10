@@ -107,16 +107,6 @@ def install():
     apt_install(pkgs, fatal=True)
     apt_install(extra_pkgs, fatal=True)
     ensure_swift_dir()
-
-    if is_elected_leader(SWIFT_HA_RES):
-        log("Leader established, generating ring builders", level=INFO)
-        # initialize new storage rings.
-        for path in SWIFT_RINGS.itervalues():
-            initialize_ring(path,
-                            config('partition-power'),
-                            config('replicas'),
-                            config('min-hours'))
-
     # configure a directory on webserver for distributing rings.
     ensure_www_dir_permissions(get_www_dir())
 
@@ -124,6 +114,16 @@ def install():
 @hooks.hook('config-changed')
 @pause_aware_restart_on_change(restart_map())
 def config_changed():
+    if is_elected_leader(SWIFT_HA_RES):
+        log("Leader established, generating ring builders", level=INFO)
+        # initialize new storage rings.
+        for path in SWIFT_RINGS.itervalues():
+            if not os.path.exists(path):
+                initialize_ring(path,
+                                config('partition-power'),
+                                config('replicas'),
+                                config('min-hours'))
+
     if config('prefer-ipv6'):
         setup_ipv6()
 
