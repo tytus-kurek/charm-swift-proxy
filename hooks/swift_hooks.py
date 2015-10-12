@@ -228,11 +228,15 @@ def storage_changed():
 
     # Allow for multiple devs per unit, passed along as a : separated list
     # Update and balance rings.
+    nodes = []
     devs = relation_get('device')
     if devs:
-        node_settings['devices'] = devs.split(':')
+        for dev in devs.split(':'):
+            node = {k: v for k, v in node_settings.items()}
+            node['device'] = dev
+            nodes.append(node)
 
-    update_rings(node_settings)
+    update_rings(nodes)
     if not is_paused():
         # Restart proxy here in case no config changes made (so
         # pause_aware_restart_on_change() ineffective).
