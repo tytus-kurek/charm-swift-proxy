@@ -35,6 +35,7 @@ from lib.swift_utils import (
     is_paused,
     pause_aware_restart_on_change,
     assess_status,
+    is_paused,
 )
 
 import charmhelpers.contrib.openstack.utils as openstack
@@ -526,7 +527,9 @@ def main():
         hooks.execute(sys.argv)
     except UnregisteredHookError as e:
         log('Unknown hook {} - skipping.'.format(e), level=DEBUG)
-    assess_status(CONFIGS)
+    # Don't overwrite paused status
+    if not is_paused():
+        assess_status(CONFIGS)
 
 
 if __name__ == '__main__':
