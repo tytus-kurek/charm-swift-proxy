@@ -402,18 +402,13 @@ def initialize_ring(path, part_power, replicas, min_hours):
     _write_ring(ring, path)
 
 
-def exists_in_ring(ring_path, node, blockdev):
+def exists_in_ring(ring_path, node):
     ring = _load_builder(ring_path).to_dict()
     node['port'] = ring_port(ring_path, node)
-    # Make a nodecopy dict, to add a 'device' key for the purpose
-    # of below comparison, as it doesn't have a single-valued 'device'
-    # but a list as e.g. 'devices': ['sdb', 'sdc', ...]
-    nodecopy = {k: v for k, v in node.items()}
-    nodecopy['device'] = blockdev
 
     for dev in ring['devs']:
-        d = [(i, dev[i]) for i in dev if i in nodecopy and i != 'zone']
-        n = [(i, nodecopy[i]) for i in nodecopy if i in dev and i != 'zone']
+        d = [(i, dev[i]) for i in dev if i in node and i != 'zone']
+        n = [(i, node[i]) for i in node if i in dev and i != 'zone']
         if sorted(d) == sorted(n):
 
             log('Node already exists in ring (%s).' % ring_path, level=INFO)
@@ -422,7 +417,7 @@ def exists_in_ring(ring_path, node, blockdev):
     return False
 
 
-def add_to_ring(ring_path, node, device):
+def add_to_ring(ring_path, node):
     ring = _load_builder(ring_path)
     port = ring_port(ring_path, node)
 
@@ -436,7 +431,7 @@ def add_to_ring(ring_path, node, device):
         'zone': node['zone'],
         'ip': node['ip'],
         'port': port,
-        'device': device,
+        'device': node['device'],
         'weight': 100,
         'meta': '',
     }
@@ -787,7 +782,7 @@ def sync_builders_and_rings_if_changed(f):
 
 
 @sync_builders_and_rings_if_changed
-def update_rings(node_settings=None, min_part_hours=None):
+def update_rings(nodes=[], min_part_hours=None):
     """Update builder with node settings and balance rings if necessary.
 
     Also update min_part_hours if provided.
@@ -819,12 +814,11 @@ def update_rings(node_settings=None, min_part_hours=None):
                     else:
                         balance_required = True
 
-    if node_settings:
-        for blockdev in node_settings.get('devices', []):
-            for ring in SWIFT_RINGS.itervalues():
-                if not exists_in_ring(ring, node_settings, blockdev):
-                    add_to_ring(ring, node_settings, blockdev)
-                    balance_required = True
+    for node in nodes:
+        for ring in SWIFT_RINGS.itervalues():
+            if not exists_in_ring(ring, node):
+                add_to_ring(ring, node)
+                balance_required = True
 
     if balance_required:
         balance_rings()

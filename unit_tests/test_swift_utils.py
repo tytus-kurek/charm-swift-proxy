@@ -129,13 +129,18 @@ class SwiftUtilsTestCase(unittest.TestCase):
             'account_port': 6002,
             'zone': 1,
             'ip': '1.2.3.4',
-            'devices': devices
         }
         for path in swift_utils.SWIFT_RINGS.itervalues():
             swift_utils.initialize_ring(path, 8, 3, 0)
 
         # verify all devices added to each ring
-        swift_utils.update_rings(node_settings)
+        nodes = []
+        for dev in devices:
+            node = {k: v for k, v in node_settings.items()}
+            node['device'] = dev
+            nodes.append(node)
+
+        swift_utils.update_rings(nodes)
         for path in swift_utils.SWIFT_RINGS.itervalues():
             devs = swift_utils._load_builder(path).to_dict()['devs']
             added_devices = [dev['device'] for dev in devs]
@@ -143,7 +148,7 @@ class SwiftUtilsTestCase(unittest.TestCase):
 
         # try re-adding, assert add_to_ring was not called
         with mock.patch('swift_utils.add_to_ring') as mock_add_to_ring:
-            swift_utils.update_rings(node_settings)
+            swift_utils.update_rings(nodes)
             self.assertFalse(mock_add_to_ring.called)
 
     @mock.patch('lib.swift_utils.get_broker_token')
