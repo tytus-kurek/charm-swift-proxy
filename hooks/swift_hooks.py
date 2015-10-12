@@ -35,7 +35,6 @@ from lib.swift_utils import (
     is_paused,
     pause_aware_restart_on_change,
     assess_status,
-    is_paused,
 )
 
 import charmhelpers.contrib.openstack.utils as openstack
