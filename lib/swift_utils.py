@@ -1034,6 +1034,11 @@ def assess_status(configs):
     """Assess status of current unit"""
     required_interfaces = {}
 
+    if is_paused():
+        status_set("maintenance",
+                   "Paused. Use 'resume' action to resume normal service.")
+        return
+
     # Check for required swift-storage relation
     if len(relation_ids('swift-storage')) < 1:
         status_set('blocked', 'Missing relation: storage')
