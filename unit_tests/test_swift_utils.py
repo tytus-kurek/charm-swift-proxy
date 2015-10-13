@@ -225,6 +225,7 @@ class SwiftUtilsTestCase(unittest.TestCase):
         rsps = []
         self.assertIsNone(swift_utils.get_first_available_value(rsps, 'key3'))
 
+    @mock.patch('lib.swift_utils.is_paused')
     @mock.patch('lib.swift_utils.config')
     @mock.patch('lib.swift_utils.set_os_workload_status')
     @mock.patch('lib.swift_utils.SwiftRingContext.__call__')
@@ -232,9 +233,15 @@ class SwiftUtilsTestCase(unittest.TestCase):
     @mock.patch('lib.swift_utils.has_minimum_zones')
     @mock.patch('lib.swift_utils.relation_ids')
     def test_assess_status(self, relation_ids, has_min_zones, status_set,
-                           ctxt, workload_status, config):
+                           ctxt, workload_status, config, is_paused):
         config.return_value = 3
 
+        is_paused.return_value = True
+        swift_utils.assess_status(None)
+        status_set.assert_called_with('maintenance',
+                "Paused. Use 'resume' action to resume normal service.")
+
+        is_paused.return_value = False
         relation_ids.return_value = []
         swift_utils.assess_status(None)
         status_set.assert_called_with('blocked', 'Missing relation: storage')
