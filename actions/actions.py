@@ -31,8 +31,6 @@ def pause(args):
         stopped = service_pause(service)
         if not stopped:
             raise Exception("{} didn't stop cleanly.".format(service))
-    status_set(
-        "maintenance", "Paused. Use 'resume' action to resume normal service.")
 
 
 def resume(args):
@@ -44,7 +42,6 @@ def resume(args):
         started = service_resume(service)
         if not started:
             raise Exception("{} didn't start cleanly.".format(service))
-    status_set("active", "")
 
 
 # A dictionary of all the defined actions to callables (which take
