@@ -239,7 +239,8 @@ class SwiftUtilsTestCase(unittest.TestCase):
         is_paused.return_value = True
         swift_utils.assess_status(None)
         status_set.assert_called_with('maintenance',
-                "Paused. Use 'resume' action to resume normal service.")
+                                      "Paused. Use 'resume' action to resume "
+                                      "normal service.")
 
         is_paused.return_value = False
         relation_ids.return_value = []
