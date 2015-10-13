@@ -5,7 +5,8 @@ import uuid
 
 sys.path.append("hooks")
 with patch('charmhelpers.core.hookenv.log'):
-    import swift_hooks
+    with patch('lib.swift_utils.is_paused') as is_paused:
+        import swift_hooks
 
 
 class SwiftHooksTestCase(unittest.TestCase):

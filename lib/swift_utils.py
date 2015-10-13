@@ -26,7 +26,8 @@ from charmhelpers.contrib.openstack.utils import (
     os_release,
     get_os_codename_package,
     get_os_codename_install_source,
-    configure_installation_source
+    configure_installation_source,
+    set_os_workload_status,
 )
 from charmhelpers.contrib.hahelpers.cluster import (
     is_elected_leader,
@@ -43,7 +44,8 @@ from charmhelpers.core.hookenv import (
     relation_set,
     relation_ids,
     related_units,
-    status_get
+    status_get,
+    status_set,
 )
 from charmhelpers.fetch import (
     apt_update,
@@ -62,6 +64,11 @@ from charmhelpers.contrib.network.ip import (
 from charmhelpers.core.decorators import (
     retry_on_exception,
 )
+from charmhelpers.core.unitdata import (
+    HookData,
+    kv,
+)
+
 
 # Various config files that are managed via templating.
 SWIFT_CONF_DIR = '/etc/swift'
@@ -547,17 +554,7 @@ def should_balance(rings):
     if config('disable-ring-balance'):
         return False
 
-    for ring in rings:
-        builder = _load_builder(ring).to_dict()
-        replicas = builder['replicas']
-        zones = [dev['zone'] for dev in builder['devs']]
-        num_zones = len(set(zones))
-        if num_zones < replicas:
-            log("Not enough zones (%d) defined to allow ring balance "
-                "(need >= %d)" % (num_zones, replicas), level=INFO)
-            return False
-
-    return True
+    return has_minimum_zones(rings)
 
 
 def do_openstack_upgrade(configs):
@@ -1001,8 +998,11 @@ def get_hostaddr():
 
 def is_paused(status_get=status_get):
     """Is the unit paused?"""
-    status, message = status_get()
-    return status == "maintenance" and message.startswith("Paused")
+    with HookData()():
+        if kv().get('unit-paused'):
+            return True
+        else:
+            return False
 
 
 def pause_aware_restart_on_change(restart_map):
@@ -1013,3 +1013,53 @@ def pause_aware_restart_on_change(restart_map):
         else:
             return restart_on_change(restart_map)(f)
     return wrapper
+
+
+def has_minimum_zones(rings):
+    """Determine if enough zones exist to satisfy minimum replicas"""
+    for ring in rings:
+        builder = _load_builder(ring).to_dict()
+        replicas = builder['replicas']
+        zones = [dev['zone'] for dev in builder['devs']]
+        num_zones = len(set(zones))
+        if num_zones < replicas:
+            log("Not enough zones (%d) defined to satisfy minimum replicas "
+                "(need >= %d)" % (num_zones, replicas), level=INFO)
+            return False
+
+    return True
+
+
+def assess_status(configs):
+    """Assess status of current unit"""
+    required_interfaces = {}
+
+    if is_paused():
+        status_set("maintenance",
+                   "Paused. Use 'resume' action to resume normal service.")
+        return
+
+    # Check for required swift-storage relation
+    if len(relation_ids('swift-storage')) < 1:
+        status_set('blocked', 'Missing relation: storage')
+        return
+
+    # Verify allowed_hosts is populated with enough unit IP addresses
+    ctxt = SwiftRingContext()()
+    if len(ctxt['allowed_hosts']) < config('replicas'):
+        status_set('blocked', 'Not enough related storage nodes')
+        return
+
+    # Verify there are enough storage zones to satisfy minimum replicas
+    rings = [r for r in SWIFT_RINGS.itervalues()]
+    if not has_minimum_zones(rings):
+        status_set('blocked', 'Not enough storage zones for minimum replicas')
+        return
+
+    if relation_ids('identity-service'):
+        required_interfaces['identity'] = ['identity-service']
+
+    if required_interfaces:
+        set_os_workload_status(configs, required_interfaces)
+    else:
+        status_set('active', 'Unit is ready')

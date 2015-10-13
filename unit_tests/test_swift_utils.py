@@ -5,8 +5,10 @@ import tempfile
 import uuid
 import unittest
 
+from mock import patch
 with mock.patch('charmhelpers.core.hookenv.config'):
-    import lib.swift_utils as swift_utils
+    with patch('lib.swift_utils.is_paused') as is_paused:
+        import lib.swift_utils as swift_utils
 
 
 def init_ring_paths(tmpdir):
@@ -223,14 +225,39 @@ class SwiftUtilsTestCase(unittest.TestCase):
         rsps = []
         self.assertIsNone(swift_utils.get_first_available_value(rsps, 'key3'))
 
-    def test_is_paused_unknown(self):
-        fake_status_get = lambda: ("unknown", "")
-        self.assertFalse(swift_utils.is_paused(status_get=fake_status_get))
+    @mock.patch('lib.swift_utils.is_paused')
+    @mock.patch('lib.swift_utils.config')
+    @mock.patch('lib.swift_utils.set_os_workload_status')
+    @mock.patch('lib.swift_utils.SwiftRingContext.__call__')
+    @mock.patch('lib.swift_utils.status_set')
+    @mock.patch('lib.swift_utils.has_minimum_zones')
+    @mock.patch('lib.swift_utils.relation_ids')
+    def test_assess_status(self, relation_ids, has_min_zones, status_set,
+                           ctxt, workload_status, config, is_paused):
+        config.return_value = 3
 
-    def test_is_paused_paused(self):
-        fake_status_get = lambda: ("maintenance", "Paused")
-        self.assertTrue(swift_utils.is_paused(status_get=fake_status_get))
+        is_paused.return_value = True
+        swift_utils.assess_status(None)
+        status_set.assert_called_with('maintenance',
+                                      "Paused. Use 'resume' action to resume "
+                                      "normal service.")
 
-    def test_is_paused_other_maintenance(self):
-        fake_status_get = lambda: ("maintenance", "Hook")
-        self.assertFalse(swift_utils.is_paused(status_get=fake_status_get))
+        is_paused.return_value = False
+        relation_ids.return_value = []
+        swift_utils.assess_status(None)
+        status_set.assert_called_with('blocked', 'Missing relation: storage')
+
+        relation_ids.return_value = ['swift-storage:1']
+
+        ctxt.return_value = {'allowed_hosts': ['1.2.3.4']}
+        swift_utils.assess_status(None)
+        status_set.assert_called_with('blocked',
+                                      'Not enough related storage nodes')
+
+        ctxt.return_value = {'allowed_hosts': ['1.2.3.4', '2.3.4.5',
+                                               '3.4.5.6']}
+        has_min_zones.return_value = False
+        swift_utils.assess_status(None)
+        status_set.assert_called_with('blocked',
+                                      'Not enough storage zones for minimum '
+                                      'replicas')
