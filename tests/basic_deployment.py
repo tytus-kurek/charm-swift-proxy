@@ -635,7 +635,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             msg = ("Resume action failed to move unit to active "
                    "status (got {} instead)".format(status))
             amulet.raise_status(amulet.FAIL, msg=msg)
-        if message != "":
+        if message != "Unit is ready":
             msg = ("Resume action failed to clear message"
                    " (got {} instead)".format(message))
             amulet.raise_status(amulet.FAIL, msg=msg)

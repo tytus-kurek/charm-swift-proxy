@@ -5,8 +5,9 @@ import unittest
 os.environ['JUJU_UNIT_NAME'] = 'swift-proxy'
 
 with patch('actions.charmhelpers.core.hookenv.config') as config:
-    config.return_value = 'swift'
-    import actions.openstack_upgrade as openstack_upgrade
+    with patch('lib.swift_utils.is_paused') as is_paused:
+        config.return_value = 'swift'
+        import actions.openstack_upgrade as openstack_upgrade
 
 
 TO_PATCH = [
