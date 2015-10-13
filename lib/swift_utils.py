@@ -424,7 +424,7 @@ def exists_in_ring(ring_path, node):
     return False
 
 
-def add_to_ring(ring_path, node, device):
+def add_to_ring(ring_path, node):
     ring = _load_builder(ring_path)
     port = ring_port(ring_path, node)
 
@@ -438,7 +438,7 @@ def add_to_ring(ring_path, node, device):
         'zone': node['zone'],
         'ip': node['ip'],
         'port': port,
-        'device': device,
+        'device': node['device'],
         'weight': 100,
         'meta': '',
     }
@@ -779,7 +779,7 @@ def sync_builders_and_rings_if_changed(f):
 
 
 @sync_builders_and_rings_if_changed
-def update_rings(node_settings=None, min_part_hours=None):
+def update_rings(nodes=[], min_part_hours=None):
     """Update builder with node settings and balance rings if necessary.
 
     Also update min_part_hours if provided.
@@ -811,12 +811,11 @@ def update_rings(node_settings=None, min_part_hours=None):
                     else:
                         balance_required = True
 
-    if node_settings:
-        for dev in node_settings.get('devices', []):
-            for ring in SWIFT_RINGS.itervalues():
-                if not exists_in_ring(ring, node_settings):
-                    add_to_ring(ring, node_settings, dev)
-                    balance_required = True
+    for node in nodes:
+        for ring in SWIFT_RINGS.itervalues():
+            if not exists_in_ring(ring, node):
+                add_to_ring(ring, node)
+                balance_required = True
 
     if balance_required:
         balance_rings()
