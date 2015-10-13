@@ -1001,11 +1001,7 @@ def pause_aware_restart_on_change(restart_map):
     """Avoids restarting services if config changes when unit is paused."""
     def wrapper(f):
         if is_paused():
-            # save/restore paused status in case called function changes it
-            status, message = status_get()
-            ret = f
-            status_set(status, message)
-            return ret
+            return f
         else:
             return restart_on_change(restart_map)(f)
     return wrapper
