@@ -526,9 +526,7 @@ def main():
         hooks.execute(sys.argv)
     except UnregisteredHookError as e:
         log('Unknown hook {} - skipping.'.format(e), level=DEBUG)
-    # Don't overwrite paused status
-    if not is_paused():
-        assess_status(CONFIGS)
+    assess_status(CONFIGS)
 
 
 if __name__ == '__main__':
