@@ -5,10 +5,13 @@ import os
 import sys
 import yaml
 
-from charmhelpers.core.host import service_pause, service_resume
-from charmhelpers.core.hookenv import action_fail, status_set
+sys.path.append('hooks/')
 
-from lib.swift_utils import services
+from charmhelpers.core.host import service_pause, service_resume
+from charmhelpers.core.hookenv import action_fail
+from charmhelpers.core.unitdata import HookData, kv
+from lib.swift_utils import assess_status, services
+from swift_hooks import CONFIGS
 
 
 def get_action_parser(actions_yaml_path, action_name,
@@ -31,6 +34,9 @@ def pause(args):
         stopped = service_pause(service)
         if not stopped:
             raise Exception("{} didn't stop cleanly.".format(service))
+    with HookData()():
+        kv().set('unit-paused', True)
+    assess_status(CONFIGS)
 
 
 def resume(args):
@@ -42,6 +48,9 @@ def resume(args):
         started = service_resume(service)
         if not started:
             raise Exception("{} didn't start cleanly.".format(service))
+    with HookData()():
+        kv().set('unit-paused', False)
+    assess_status(CONFIGS)
 
 
 # A dictionary of all the defined actions to callables (which take
