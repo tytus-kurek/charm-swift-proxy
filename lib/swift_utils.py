@@ -64,6 +64,11 @@ from charmhelpers.contrib.network.ip import (
 from charmhelpers.core.decorators import (
     retry_on_exception,
 )
+from charmhelpers.core.unitdata import (
+    HookData,
+    kv,
+)
+
 
 # Various config files that are managed via templating.
 SWIFT_CONF_DIR = '/etc/swift'
@@ -993,8 +998,11 @@ def get_hostaddr():
 
 def is_paused(status_get=status_get):
     """Is the unit paused?"""
-    status, message = status_get()
-    return status == "maintenance" and message.startswith("Paused")
+    with HookData()():
+        if kv().get('unit-paused'):
+            return True
+        else:
+            return False
 
 
 def pause_aware_restart_on_change(restart_map):

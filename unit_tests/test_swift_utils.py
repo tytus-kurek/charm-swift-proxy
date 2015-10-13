@@ -5,8 +5,10 @@ import tempfile
 import uuid
 import unittest
 
+from mock import patch
 with mock.patch('charmhelpers.core.hookenv.config'):
-    import lib.swift_utils as swift_utils
+    with patch('lib.swift_utils.is_paused') as is_paused:
+        import lib.swift_utils as swift_utils
 
 
 def init_ring_paths(tmpdir):
@@ -222,18 +224,6 @@ class SwiftUtilsTestCase(unittest.TestCase):
 
         rsps = []
         self.assertIsNone(swift_utils.get_first_available_value(rsps, 'key3'))
-
-    def test_is_paused_unknown(self):
-        fake_status_get = lambda: ("unknown", "")
-        self.assertFalse(swift_utils.is_paused(status_get=fake_status_get))
-
-    def test_is_paused_paused(self):
-        fake_status_get = lambda: ("maintenance", "Paused")
-        self.assertTrue(swift_utils.is_paused(status_get=fake_status_get))
-
-    def test_is_paused_other_maintenance(self):
-        fake_status_get = lambda: ("maintenance", "Hook")
-        self.assertFalse(swift_utils.is_paused(status_get=fake_status_get))
 
     @mock.patch('lib.swift_utils.config')
     @mock.patch('lib.swift_utils.set_os_workload_status')
