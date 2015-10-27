@@ -1017,6 +1017,8 @@ def pause_aware_restart_on_change(restart_map):
 def has_minimum_zones(rings):
     """Determine if enough zones exist to satisfy minimum replicas"""
     for ring in rings:
+        if not os.path.isfile(ring):
+            return False
         builder = _load_builder(ring).to_dict()
         replicas = builder['replicas']
         zones = [dev['zone'] for dev in builder['devs']]
