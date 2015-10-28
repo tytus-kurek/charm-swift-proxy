@@ -173,8 +173,10 @@ class SwiftIdentityContext(OSContextGenerator):
                     ctxt.update(ks_auth)
 
         if config('prefer-ipv6'):
-            ctxt['keystone_host'] = format_ipv6_addr(ctxt['keystone_host'])
-            ctxt['service_host'] = format_ipv6_addr(ctxt['service_host'])
+            for key in ['keystone_host', 'service_host']:
+                host = ctxt.get(key)
+                if host:
+                    ctxt[key] = format_ipv6_addr(host)
 
         return ctxt
 
