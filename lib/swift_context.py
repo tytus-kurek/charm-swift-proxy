@@ -21,7 +21,8 @@ from charmhelpers.contrib.hahelpers.cluster import (
     determine_apache_port,
 )
 from charmhelpers.contrib.network.ip import (
-    get_ipv6_addr
+    format_ipv6_addr,
+    get_ipv6_addr,
 )
 from charmhelpers.contrib.openstack.utils import get_host_ip
 
@@ -170,6 +171,12 @@ class SwiftIdentityContext(OSContextGenerator):
                 }
                 if context_complete(ks_auth):
                     ctxt.update(ks_auth)
+
+        if config('prefer-ipv6'):
+            for key in ['keystone_host', 'service_host']:
+                host = ctxt.get(key)
+                if host:
+                    ctxt[key] = format_ipv6_addr(host)
 
         return ctxt
 
