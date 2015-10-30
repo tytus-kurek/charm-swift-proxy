@@ -208,10 +208,9 @@ def storage_changed():
         host_ip = format_ipv6_addr(addr)
         if not host_ip:
             msg = ("Did not get IPv6 address from storage relation "
-                   "(got=%s) - ignoring storage relation until remote unit is "
-                   "ready" % (addr))
+                   "(got=%s)" % (addr))
             log(msg, level=WARNING)
-            return
+            host_ip = addr
     else:
         host_ip = openstack.get_host_ip(addr)
 
