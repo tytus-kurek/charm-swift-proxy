@@ -6,8 +6,10 @@ import mock
 import yaml
 
 from mock import patch
+
 with patch('lib.swift_utils.is_paused') as is_paused:
-    import actions.actions
+    with patch('lib.swift_utils.register_configs') as configs:
+        import actions.actions
 
 
 class CharmTestCase(unittest.TestCase):
