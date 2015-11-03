@@ -149,7 +149,7 @@ class SwiftUtilsTestCase(unittest.TestCase):
             self.assertEqual(devices, added_devices)
 
         # try re-adding, assert add_to_ring was not called
-        with mock.patch('swift_utils.add_to_ring') as mock_add_to_ring:
+        with mock.patch('lib.swift_utils.add_to_ring') as mock_add_to_ring:
             swift_utils.update_rings(nodes)
             self.assertFalse(mock_add_to_ring.called)
 
