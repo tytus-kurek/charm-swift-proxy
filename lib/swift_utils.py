@@ -1057,6 +1057,15 @@ def assess_status(configs):
         status_set('blocked', 'Not enough storage zones for minimum replicas')
         return
 
+    if config('prefer-ipv6'):
+        for rid in relation_ids('swift-storage'):
+            for unit in related_units(rid):
+                addr = relation_get(attribute='private-address', unit=unit,
+                                    rid=rid)
+                if not format_ipv6_addr(addr):
+                    status_set('blocked', 'Did not get IPv6 address from '
+                               'storage relation (got=%s)' % (addr))
+
     if relation_ids('identity-service'):
         required_interfaces['identity'] = ['identity-service']
 
