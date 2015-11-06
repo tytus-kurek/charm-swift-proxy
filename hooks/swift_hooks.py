@@ -152,6 +152,9 @@ def config_changed():
     for r_id in relation_ids('identity-service'):
         keystone_joined(relid=r_id)
 
+    for r_id in relation_ids('object-store'):
+        object_store_joined(relation_id=r_id)
+
 
 @hooks.hook('identity-service-relation-joined')
 def keystone_joined(relid=None):
@@ -255,6 +258,16 @@ def storage_changed():
 @pause_aware_restart_on_change(restart_map())
 def storage_broken():
     CONFIGS.write_all()
+
+
+@hooks.hook('object-store-relation-joined')
+def object_store_joined(relation_id=None):
+    relation_data = {
+        'swift-url':
+        "{}:{}".format(canonical_url(CONFIGS, INTERNAL), config('bind-port'))
+    }
+
+    relation_set(relation_id=relation_id, **relation_data)
 
 
 @hooks.hook('cluster-relation-joined')

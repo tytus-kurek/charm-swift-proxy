@@ -129,8 +129,8 @@ class SwiftIdentityContext(OSContextGenerator):
         auth_host = config('keystone-auth-host')
         admin_user = config('keystone-admin-user')
         admin_password = config('keystone-admin-user')
-        if (auth_type == 'keystone' and auth_host
-                and admin_user and admin_password):
+        if (auth_type == 'keystone' and auth_host and
+                admin_user and admin_password):
             log('Using user-specified Keystone configuration.')
             ks_auth = {
                 'auth_type': 'keystone',
