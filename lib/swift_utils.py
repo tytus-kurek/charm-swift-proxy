@@ -1065,6 +1065,7 @@ def assess_status(configs):
                 if not format_ipv6_addr(addr):
                     status_set('blocked', 'Did not get IPv6 address from '
                                'storage relation (got=%s)' % (addr))
+                    return
 
     if relation_ids('identity-service'):
         required_interfaces['identity'] = ['identity-service']
