@@ -210,9 +210,10 @@ def storage_changed():
     if config('prefer-ipv6'):
         host_ip = format_ipv6_addr(addr)
         if not host_ip:
-            errmsg = ("Did not get IPv6 address from storage relation "
-                      "(got=%s)" % (addr))
-            raise SwiftProxyCharmException(errmsg)
+            msg = ("Did not get IPv6 address from storage relation "
+                   "(got=%s)" % (addr))
+            log(msg, level=WARNING)
+            host_ip = addr
     else:
         host_ip = openstack.get_host_ip(addr)
 
