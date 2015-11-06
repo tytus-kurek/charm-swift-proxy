@@ -214,6 +214,7 @@ def storage_changed():
                    "(got=%s)" % (addr))
             log(msg, level=WARNING)
             host_ip = addr
+            return
     else:
         host_ip = openstack.get_host_ip(addr)
 
