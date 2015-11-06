@@ -60,6 +60,7 @@ from charmhelpers.core.host import (
 from charmhelpers.contrib.network.ip import (
     format_ipv6_addr,
     get_ipv6_addr,
+    is_ipv6,
 )
 from charmhelpers.core.decorators import (
     retry_on_exception,
@@ -1056,6 +1057,16 @@ def assess_status(configs):
     if not has_minimum_zones(rings):
         status_set('blocked', 'Not enough storage zones for minimum replicas')
         return
+
+    if config('prefer-ipv6'):
+        for rid in relation_ids('swift-storage'):
+            for unit in related_units(rid):
+                addr = relation_get(attribute='private-address', unit=unit,
+                                    rid=rid)
+                if not is_ipv6(addr):
+                    status_set('blocked', 'Did not get IPv6 address from '
+                               'storage relation (got=%s)' % (addr))
+                    return
 
     if relation_ids('identity-service'):
         required_interfaces['identity'] = ['identity-service']
