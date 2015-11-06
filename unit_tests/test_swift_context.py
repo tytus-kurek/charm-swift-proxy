@@ -45,7 +45,7 @@ class SwiftContextTestCase(unittest.TestCase):
         mock_service_name.return_value = "testsvc"
         tmpfile = tempfile.mktemp()
         swift_context.SWIFT_HASH_FILE = tmpfile
-        with mock.patch('swift_context.os.environ.get') as mock_env_get:
+        with mock.patch('lib.swift_context.os.environ.get') as mock_env_get:
             mock_env_get.return_value = str(uuid.uuid4())
             hash_ = swift_context.get_swift_hash()
             mock_env_get.assert_called_with('JUJU_ENV_UUID')
