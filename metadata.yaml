@@ -1,12 +1,22 @@
 name: swift-proxy
-maintainer: Adam Gandelman <adamg@canonical.com>
-summary: "Swift proxy node"
+summary: OpenStack Object Storage - Swift proxy service
+maintainer: OpenStack Charmers <openstack-charmers@lists.ubuntu.com>
 description: |
-  Swift is a distributed virtual object store. This formula deploys the proxy node
-  to be related to storage nodes.
+ OpenStack Object Storage (code-named Swift) is open source software for
+ creating redundant, scalable object storage using clusters of standardized
+ servers to store petabytes of accessible data. It is not a file system or
+ real-time data storage system, but rather a long-term storage system for a
+ more permanent type of static data that can be retrieved, leveraged, and
+ then updated if necessary. Primary examples of data that best fit this
+ type of storage model are virtual machine images, photo storage, email
+ storage and backup archiving. Having no central "brain" or master point of
+ control provides greater scalability, redundancy and permanence.
+ .
+ This charm deploys the Swift proxy service, providing HTTP based access
+ onto underlying Swift storage services.
 tags:
-    - openstack
-    - cache-proxy
+  - openstack
+  - cache-proxy
 provides:
   nrpe-external-master:
     interface: nrpe-external-master
