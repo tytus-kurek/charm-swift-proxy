@@ -265,3 +265,15 @@ options:
       wait for you to execute the openstack-upgrade action for this charm on
       each unit. If False it will revert to existing behavior of upgrading
       all units on config change.
+  haproxy-server-timeout:
+    type: int
+    default:
+    description: |
+       Server timeout configuration in ms for haproxy, used in HA configurations.
+       If not provided, default value of 30000ms is used.
+  haproxy-client-timeout:
+    type: int
+    default:
+    description: |
+       Client timeout configuration in ms for haproxy, used in HA
+       configurations. If not provided, default value of 30000ms is used.
