@@ -157,9 +157,5 @@ class SwiftHooksTestCase(unittest.TestCase):
         mock_get_host_ip.side_effect = fake_get_host_ip
         swift_hooks.update_rsync_acls()
         calls = [call(rsync_allowed_hosts='10.0.0.1 10.0.0.2',
-                      relation_id='storage:1',
-                      unit='unit/0', timestamp=1234),
-                 call(rsync_allowed_hosts='10.0.0.1 10.0.0.2',
-                      relation_id='storage:1',
-                      unit='unit/1', timestamp=1234)]
+                      relation_id='storage:1', timestamp=1234)]
         mock_rel_set.assert_has_calls(calls)

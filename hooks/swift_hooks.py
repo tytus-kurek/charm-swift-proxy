@@ -227,8 +227,7 @@ def update_rsync_acls():
     settings = {'rsync_allowed_hosts': rsync_hosts,
                 'timestamp': time.time()}
     for rid in relation_ids('swift-storage'):
-        for unit in related_units(rid):
-            relation_set(unit=unit, relation_id=rid, **settings)
+        relation_set(relation_id=rid, **settings)
 
 
 @hooks.hook('swift-storage-relation-changed')
