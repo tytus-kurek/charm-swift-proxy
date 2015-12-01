@@ -1,7 +1,11 @@
-from mock import patch
 import sys
 import unittest
 import uuid
+
+from mock import (
+    call,
+    patch,
+)
 
 sys.path.append("hooks")
 with patch('charmhelpers.core.hookenv.log'):
@@ -129,3 +133,29 @@ class SwiftHooksTestCase(unittest.TestCase):
             requested_roles='Operator,Monitor',
             relation_id=None
         )
+
+    @patch.object(swift_hooks.time, 'time')
+    @patch.object(swift_hooks, 'get_host_ip')
+    @patch.object(swift_hooks, 'is_elected_leader')
+    @patch.object(swift_hooks, 'related_units')
+    @patch.object(swift_hooks, 'relation_ids')
+    @patch.object(swift_hooks, 'relation_set')
+    def test_update_rsync_acls(self, mock_rel_set, mock_rel_ids,
+                               mock_rel_units, mock_is_leader,
+                               mock_get_host_ip, mock_time):
+        mock_time.return_value = 1234
+        mock_is_leader.return_value = True
+        mock_rel_ids.return_value = ['storage:1']
+        mock_rel_units.return_value = ['unit/0', 'unit/1']
+
+        def fake_get_host_ip(rid, unit):
+            if unit == 'unit/0':
+                return '10.0.0.1'
+            elif unit == 'unit/1':
+                return '10.0.0.2'
+
+        mock_get_host_ip.side_effect = fake_get_host_ip
+        swift_hooks.update_rsync_acls()
+        calls = [call(rsync_allowed_hosts='10.0.0.1 10.0.0.2',
+                      relation_id='storage:1', timestamp=1234)]
+        mock_rel_set.assert_has_calls(calls)

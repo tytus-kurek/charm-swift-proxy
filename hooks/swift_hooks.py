@@ -2,6 +2,7 @@
 
 import os
 import sys
+import time
 
 from subprocess import (
     check_call,
@@ -192,6 +193,43 @@ def storage_joined():
         mark_www_rings_deleted()
 
 
+def get_host_ip(rid=None, unit=None):
+    addr = relation_get('private-address', rid=rid, unit=unit)
+    if config('prefer-ipv6'):
+        host_ip = format_ipv6_addr(addr)
+        if host_ip:
+            return host_ip
+        else:
+            msg = ("Did not get IPv6 address from storage relation "
+                   "(got=%s)" % (addr))
+            log(msg, level=WARNING)
+
+    return openstack.get_host_ip(addr)
+
+
+def update_rsync_acls():
+    """Get Host IP of each storage unit and broadcast acl to all units."""
+    hosts = []
+
+    if not is_elected_leader(SWIFT_HA_RES):
+        log("Skipping rsync acl update since not leader", level=DEBUG)
+        return
+
+    # Get all unit addresses
+    for rid in relation_ids('swift-storage'):
+        for unit in related_units(rid):
+            hosts.append(get_host_ip(rid=rid, unit=unit))
+
+    rsync_hosts = ' '.join(hosts)
+    log("Broadcasting acl '%s' to all storage units" % (rsync_hosts),
+        level=DEBUG)
+    # We add a timestamp so that the storage units know which is the newest
+    settings = {'rsync_allowed_hosts': rsync_hosts,
+                'timestamp': time.time()}
+    for rid in relation_ids('swift-storage'):
+        relation_set(relation_id=rid, **settings)
+
+
 @hooks.hook('swift-storage-relation-changed')
 @pause_aware_restart_on_change(restart_map())
 def storage_changed():
@@ -206,17 +244,13 @@ def storage_changed():
         return
 
     log("Leader established, updating ring builders", level=INFO)
-    addr = relation_get('private-address')
-    if config('prefer-ipv6'):
-        host_ip = format_ipv6_addr(addr)
-        if not host_ip:
-            msg = ("Did not get IPv6 address from storage relation "
-                   "(got=%s)" % (addr))
-            log(msg, level=WARNING)
-            host_ip = addr
-            return
-    else:
-        host_ip = openstack.get_host_ip(addr)
+    host_ip = get_host_ip()
+    if not host_ip:
+        log("No host ip found in storage relation - deferring storage "
+            "relation", level=WARNING)
+        return
+
+    update_rsync_acls()
 
     zone = get_zone(config('zone-assignment'))
     node_settings = {
@@ -538,6 +572,11 @@ def update_nrpe_config():
     nrpe.add_init_service_checks(nrpe_setup, services(), current_unit)
     nrpe.add_haproxy_checks(nrpe_setup, current_unit)
     nrpe_setup.write()
+
+
+@hooks.hook('upgrade-charm')
+def upgrade_charm():
+    update_rsync_acls()
 
 
 def main():
