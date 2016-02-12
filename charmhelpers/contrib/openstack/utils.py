@@ -25,6 +25,7 @@ import sys
 import re
 
 import six
+import tempfile
 import traceback
 import uuid
 import yaml
@@ -41,6 +42,7 @@ from charmhelpers.core.hookenv import (
     config,
     log as juju_log,
     charm_dir,
+    DEBUG,
     INFO,
     related_units,
     relation_ids,
@@ -105,16 +107,26 @@ OPENSTACK_CODENAMES = OrderedDict([
 
 # The ugly duckling - must list releases oldest to newest
 SWIFT_CODENAMES = OrderedDict([
-    ('diablo',   ['1.4.3']),
-    ('essex',    ['1.4.8']),
-    ('folsom',   ['1.7.4']),
-    ('grizzly',  ['1.7.6', '1.7.7', '1.8.0']),
-    ('havana',   ['1.9.0', '1.9.1', '1.10.0']),
-    ('icehouse', ['1.11.0', '1.12.0', '1.13.0', '1.13.1']),
-    ('juno',     ['2.0.0', '2.1.0', '2.2.0']),
-    ('kilo',     ['2.2.1', '2.2.2']),
-    ('liberty',  ['2.3.0', '2.4.0', '2.5.0']),
-    ('mitaka',   ['2.5.0']),
+    ('diablo',
+        ['1.4.3']),
+    ('essex',
+        ['1.4.8']),
+    ('folsom',
+        ['1.7.4']),
+    ('grizzly',
+        ['1.7.6', '1.7.7', '1.8.0']),
+    ('havana',
+        ['1.9.0', '1.9.1', '1.10.0']),
+    ('icehouse',
+        ['1.11.0', '1.12.0', '1.13.0', '1.13.1']),
+    ('juno',
+        ['2.0.0', '2.1.0', '2.2.0']),
+    ('kilo',
+        ['2.2.1', '2.2.2']),
+    ('liberty',
+        ['2.3.0', '2.4.0', '2.5.0']),
+    ('mitaka',
+        ['2.5.0']),
 ])
 
 # >= Liberty version->codename mapping
@@ -337,12 +349,42 @@ def os_release(package, base='essex'):
 
 
 def import_key(keyid):
-    cmd = "apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 " \
-          "--recv-keys %s" % keyid
-    try:
-        subprocess.check_call(cmd.split(' '))
-    except subprocess.CalledProcessError:
-        error_out("Error importing repo key %s" % keyid)
+    key = keyid.strip()
+    if (key.startswith('-----BEGIN PGP PUBLIC KEY BLOCK-----') and
+            key.endswith('-----END PGP PUBLIC KEY BLOCK-----')):
+        juju_log("PGP key found (looks like ASCII Armor format)", level=DEBUG)
+        juju_log("Importing ASCII Armor PGP key", level=DEBUG)
+        with tempfile.NamedTemporaryFile() as keyfile:
+            with open(keyfile.name, 'w') as fd:
+                fd.write(key)
+                fd.write("\n")
+
+            cmd = ['apt-key', 'add', keyfile.name]
+            try:
+                subprocess.check_call(cmd)
+            except subprocess.CalledProcessError:
+                error_out("Error importing PGP key '%s'" % key)
+    else:
+        juju_log("PGP key found (looks like Radix64 format)", level=DEBUG)
+        juju_log("Importing PGP key from keyserver", level=DEBUG)
+        cmd = ['apt-key', 'adv', '--keyserver',
+               'hkp://keyserver.ubuntu.com:80', '--recv-keys', key]
+        try:
+            subprocess.check_call(cmd)
+        except subprocess.CalledProcessError:
+            error_out("Error importing PGP key '%s'" % key)
+
+
+def get_source_and_pgp_key(input):
+    """Look for a pgp key ID or ascii-armor key in the given input."""
+    index = input.strip()
+    index = input.rfind('|')
+    if index < 0:
+        return input, None
+
+    key = input[index + 1:].strip('|')
+    source = input[:index]
+    return source, key
 
 
 def configure_installation_source(rel):
@@ -354,16 +396,16 @@ def configure_installation_source(rel):
         with open('/etc/apt/sources.list.d/juju_deb.list', 'w') as f:
             f.write(DISTRO_PROPOSED % ubuntu_rel)
     elif rel[:4] == "ppa:":
-        src = rel
+        src, key = get_source_and_pgp_key(rel)
+        if key:
+            import_key(key)
+
         subprocess.check_call(["add-apt-repository", "-y", src])
     elif rel[:3] == "deb":
-        l = len(rel.split('|'))
-        if l == 2:
-            src, key = rel.split('|')
-            juju_log("Importing PPA key from keyserver for %s" % src)
+        src, key = get_source_and_pgp_key(rel)
+        if key:
             import_key(key)
-        elif l == 1:
-            src = rel
+
         with open('/etc/apt/sources.list.d/juju_deb.list', 'w') as f:
             f.write(src)
     elif rel[:6] == 'cloud:':
