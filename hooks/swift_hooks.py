@@ -87,6 +87,7 @@ from charmhelpers.contrib.network.ip import (
 )
 from charmhelpers.contrib.openstack.context import ADDRESS_TYPES
 from charmhelpers.contrib.charmsupport import nrpe
+from charmhelpers.contrib.hardening.harden import harden
 
 extra_pkgs = [
     "haproxy",
@@ -98,6 +99,7 @@ CONFIGS = register_configs()
 
 
 @hooks.hook('install.real')
+@harden()
 def install():
     status_set('maintenance', 'Executing pre-install')
     execd_preinstall()
@@ -118,6 +120,7 @@ def install():
 
 @hooks.hook('config-changed')
 @pause_aware_restart_on_change(restart_map())
+@harden()
 def config_changed():
     if is_elected_leader(SWIFT_HA_RES):
         log("Leader established, generating ring builders", level=INFO)
@@ -575,8 +578,15 @@ def update_nrpe_config():
 
 
 @hooks.hook('upgrade-charm')
+@harden()
 def upgrade_charm():
     update_rsync_acls()
+
+
+@hooks.hook('update-status')
+@harden()
+def update_status():
+    log('Updating status.')
 
 
 def main():

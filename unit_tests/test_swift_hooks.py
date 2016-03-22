@@ -1,16 +1,27 @@
 import sys
-import unittest
 import uuid
+
+import unittest
 
 from mock import (
     call,
     patch,
+    MagicMock,
 )
 
 sys.path.append("hooks")
-with patch('charmhelpers.core.hookenv.log'):
-    with patch('lib.swift_utils.is_paused') as is_paused:
-        import swift_hooks
+
+# python-apt is not installed as part of test-requirements but is imported by
+# some charmhelpers modules so create a fake import.
+sys.modules['apt'] = MagicMock()
+sys.modules['apt_pkg'] = MagicMock()
+
+with patch('hooks.charmhelpers.contrib.hardening.harden.harden') as mock_dec:
+    mock_dec.side_effect = (lambda *dargs, **dkwargs: lambda f:
+                            lambda *args, **kwargs: f(*args, **kwargs))
+    with patch('hooks.charmhelpers.core.hookenv.log'):
+        with patch('lib.swift_utils.is_paused') as is_paused:
+            import swift_hooks
 
 
 class SwiftHooksTestCase(unittest.TestCase):

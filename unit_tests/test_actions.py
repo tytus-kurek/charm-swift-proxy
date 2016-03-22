@@ -1,15 +1,24 @@
 import argparse
+import sys
 import tempfile
-import unittest
 
 import mock
 import yaml
+import unittest
 
-from mock import patch
+from mock import patch, MagicMock
 
-with patch('lib.swift_utils.is_paused') as is_paused:
-    with patch('lib.swift_utils.register_configs') as configs:
-        import actions.actions
+# python-apt is not installed as part of test-requirements but is imported by
+# some charmhelpers modules so create a fake import.
+sys.modules['apt'] = MagicMock()
+sys.modules['apt_pkg'] = MagicMock()
+
+with patch('charmhelpers.contrib.hardening.harden.harden') as mock_dec:
+    mock_dec.side_effect = (lambda *dargs, **dkwargs: lambda f:
+                            lambda *args, **kwargs: f(*args, **kwargs))
+    with patch('lib.swift_utils.is_paused') as is_paused:
+        with patch('lib.swift_utils.register_configs') as configs:
+            import actions.actions
 
 
 class CharmTestCase(unittest.TestCase):
