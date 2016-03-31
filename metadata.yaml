@@ -17,6 +17,10 @@ description: |
 tags:
   - openstack
   - cache-proxy
+extra-bindings:
+  public:
+  admin:
+  internal:
 provides:
   nrpe-external-master:
     interface: nrpe-external-master
