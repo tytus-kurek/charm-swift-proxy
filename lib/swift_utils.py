@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
 import uuid
 
 from collections import OrderedDict
@@ -39,6 +40,7 @@ from charmhelpers.core.hookenv import (
     INFO,
     WARNING,
     config,
+    local_unit,
     relation_get,
     unit_get,
     relation_set,
@@ -180,9 +182,16 @@ class SwiftProxyClusterRPC(object):
     KEY_STOP_PROXY_SVC = 'stop-proxy-service'
     KEY_STOP_PROXY_SVC_ACK = 'stop-proxy-service-ack'
     KEY_NOTIFY_LEADER_CHANGED = 'leader-changed-notification'
+    KEY_REQUEST_RESYNC = 'resync-request'
+    KEY_REQUEST_RESYNC_ACK = 'resync-request-ack'
 
     def __init__(self, version=1):
         self._version = version
+
+    @property
+    def _hostname(self):
+        hostname = get_hostaddr()
+        return format_ipv6_addr(hostname) or hostname
 
     def template(self):
         # Everything must be None by default so it gets dropped from the
@@ -190,30 +199,52 @@ class SwiftProxyClusterRPC(object):
         templates = {1: {'trigger': None,
                          'broker-token': None,
                          'builder-broker': None,
+                         'broker-timestamp': None,
                          self.KEY_STOP_PROXY_SVC: None,
                          self.KEY_STOP_PROXY_SVC_ACK: None,
                          self.KEY_NOTIFY_LEADER_CHANGED: None,
+                         self.KEY_REQUEST_RESYNC: None,
                          'peers-only': None,
                          'sync-only-builders': None}}
         return copy.deepcopy(templates[self._version])
 
-    def stop_proxy_request(self, peers_only=False):
+    def stop_proxy_request(self, peers_only=False, token=None):
         """Request to stop peer proxy service.
 
-        NOTE: leader action
+        A token can optionally be supplied in case we want to restart a
+        previously triggered sync e.g. following a leader change notification.
+
+        NOTE: this action must only be performed by the cluster leader.
+
+        :param peers_only: If True, indicates that we only want peer
+                           (i.e. proxy not storage) units to be notified.
+        :param token: optional request token expected to be echoed in ACK from
+                      peer. If token not provided, a new one is generated.
         """
+        if not is_elected_leader(SWIFT_HA_RES):
+            errmsg = "Leader function called by non-leader"
+            raise SwiftProxyCharmException(errmsg)
+
         rq = self.template()
-        rq['trigger'] = str(uuid.uuid4())
+        if not token:
+            token = str(uuid.uuid4())
+
+        rq['trigger'] = token
         rq[self.KEY_STOP_PROXY_SVC] = rq['trigger']
         if peers_only:
             rq['peers-only'] = 1
 
+        rq['builder-broker'] = self._hostname
         return rq
 
     def stop_proxy_ack(self, echo_token, echo_peers_only):
         """Ack that peer proxy service is stopped.
 
-        NOTE: non-leader action
+        NOTE: this action must NOT be performed by the cluster leader.
+
+        :param echo_peers_only: peers_only value from leader that we echo back.
+        :param echo_token: request token received from leader that we must now
+                           echo as an ACK.
         """
         rq = self.template()
         rq['trigger'] = str(uuid.uuid4())
@@ -222,12 +253,19 @@ class SwiftProxyClusterRPC(object):
         rq['peers-only'] = echo_peers_only
         return rq
 
-    def sync_rings_request(self, broker_host, broker_token,
-                           builders_only=False):
-        """Request for peer to sync rings.
+    def sync_rings_request(self, broker_token, builders_only=False):
+        """Request for peers to sync rings from leader.
 
-        NOTE: leader action
+        NOTE: this action must only be performed by the cluster leader.
+
+        :param broker_token: token to identify sync request.
+        :param builders_only: if False, tell peers to sync builders only (not
+                              rings).
         """
+        if not is_elected_leader(SWIFT_HA_RES):
+            errmsg = "Leader function called by non-leader"
+            raise SwiftProxyCharmException(errmsg)
+
         rq = self.template()
         rq['trigger'] = str(uuid.uuid4())
 
@@ -235,17 +273,38 @@ class SwiftProxyClusterRPC(object):
             rq['sync-only-builders'] = 1
 
         rq['broker-token'] = broker_token
-        rq['builder-broker'] = broker_host
+        rq['broker-timestamp'] = "%f" % time.time()
+        rq['builder-broker'] = self._hostname
         return rq
 
-    def notify_leader_changed(self):
+    def notify_leader_changed(self, token):
         """Notify peers that leader has changed.
 
-        NOTE: leader action
+        The token passed in must be that associated with the sync we claim to
+        have been interrupted. It will be re-used by the restored leader once
+        it receives this notification.
+
+        NOTE: this action must only be performed by the cluster leader that
+              has relinquished it's leader status as part of the current hook
+              context.
+        """
+        if not is_elected_leader(SWIFT_HA_RES):
+            errmsg = "Leader function called by non-leader"
+            raise SwiftProxyCharmException(errmsg)
+
+        rq = self.template()
+        rq['trigger'] = str(uuid.uuid4())
+        rq[self.KEY_NOTIFY_LEADER_CHANGED] = token
+        return rq
+
+    def request_resync(self, token):
+        """Request re-sync from leader.
+
+        NOTE: this action must not be performed by the cluster leader.
         """
         rq = self.template()
         rq['trigger'] = str(uuid.uuid4())
-        rq[self.KEY_NOTIFY_LEADER_CHANGED] = rq['trigger']
+        rq[self.KEY_REQUEST_RESYNC] = token
         return rq
 
 
@@ -704,29 +763,27 @@ def get_builders_checksum():
     return sha.hexdigest()
 
 
-def get_broker_token():
-    """Get ack token from peers to be used as broker token.
-
-    Must be equal across all peers.
-
-    Returns token or None if not found.
+def non_null_unique(data):
+    """Return True if data is a list containing all non-null values that are
+    all equal.
     """
-    responses = []
-    ack_key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK
+    return (all(data) and len(set(data)) > 1)
+
+
+def previously_synced():
+    """If a full sync is not known to have been performed from this unit, False
+    is returned."""
+    broker = None
     for rid in relation_ids('cluster'):
-        for unit in related_units(rid):
-            responses.append(relation_get(attribute=ack_key, rid=rid,
-                                          unit=unit))
+        broker = relation_get(attribute='builder-broker', rid=rid,
+                              unit=local_unit())
+        only_builders_synced = relation_get(attribute='sync-only-builders',
+                                            rid=rid, unit=local_unit())
 
-    # If no acks exist we have probably never done a sync so make up a token
-    if len(responses) == 0:
-        return str(uuid.uuid4())
+    if broker and not only_builders_synced:
+        return True
 
-    if not all(responses) or len(set(responses)) != 1:
-        log("Not all ack tokens equal - %s" % (responses), level=DEBUG)
-        return None
-
-    return responses[0]
+    return False
 
 
 def sync_builders_and_rings_if_changed(f):
@@ -757,7 +814,8 @@ def sync_builders_and_rings_if_changed(f):
             rings_path = os.path.join(SWIFT_CONF_DIR, '*.%s' %
                                       (SWIFT_RING_EXT))
             rings_ready = len(glob.glob(rings_path)) == len(SWIFT_RINGS)
-            rings_changed = rings_after != rings_before
+            rings_changed = ((rings_after != rings_before) or
+                             not previously_synced())
             builders_changed = builders_after != builders_before
             if rings_changed or builders_changed:
                 # Copy builders and rings (if available) to the server dir.
@@ -766,9 +824,9 @@ def sync_builders_and_rings_if_changed(f):
                     # Trigger sync
                     cluster_sync_rings(peers_only=not rings_changed)
                 else:
-                    cluster_sync_rings(peers_only=True, builders_only=True)
                     log("Rings not ready for sync - syncing builders",
                         level=DEBUG)
+                    cluster_sync_rings(peers_only=True, builders_only=True)
             else:
                 log("Rings/builders unchanged - skipping sync", level=DEBUG)
 
@@ -835,6 +893,7 @@ def balance_rings():
         return
 
     rebalanced = False
+    log("Rebalancing rings", level=INFO)
     for path in SWIFT_RINGS.itervalues():
         if balance_ring(path):
             log('Balanced ring %s' % path, level=DEBUG)
@@ -869,20 +928,31 @@ def notify_peers_builders_available(broker_token, builders_only=False):
             "skipping", level=WARNING)
         return
 
-    hostname = get_hostaddr()
-    hostname = format_ipv6_addr(hostname) or hostname
+    if not broker_token:
+        log("No broker token - aborting sync", level=WARNING)
+        return
+
+    cluster_rids = relation_ids('cluster')
+    if not cluster_rids:
+        log("Cluster relation not yet available - skipping sync", level=DEBUG)
+        return
+
+    if builders_only:
+        type = "builders"
+    else:
+        type = "builders & rings"
+
     # Notify peers that builders are available
-    log("Notifying peer(s) that rings are ready for sync.", level=INFO)
-    rq = SwiftProxyClusterRPC().sync_rings_request(hostname,
-                                                   broker_token,
+    log("Notifying peer(s) that %s are ready for sync." % type, level=INFO)
+    rq = SwiftProxyClusterRPC().sync_rings_request(broker_token,
                                                    builders_only=builders_only)
-    for rid in relation_ids('cluster'):
+    for rid in cluster_rids:
         log("Notifying rid=%s (%s)" % (rid, rq), level=DEBUG)
         relation_set(relation_id=rid, relation_settings=rq)
 
 
-def broadcast_rings_available(broker_token, peers=True, storage=True,
-                              builders_only=False):
+def broadcast_rings_available(storage=True, builders_only=False,
+                              broker_token=None):
     """Notify storage relations and cluster (peer) relations that rings and
     builders are availble for sync.
 
@@ -895,14 +965,13 @@ def broadcast_rings_available(broker_token, peers=True, storage=True,
     else:
         log("Skipping notify storage relations", level=DEBUG)
 
-    if peers:
-        notify_peers_builders_available(broker_token,
-                                        builders_only=builders_only)
-    else:
-        log("Skipping notify peer relations", level=DEBUG)
+    # Always set peer info even if not clustered so that info is present when
+    # units join
+    notify_peers_builders_available(broker_token,
+                                    builders_only=builders_only)
 
 
-def cluster_sync_rings(peers_only=False, builders_only=False):
+def cluster_sync_rings(peers_only=False, builders_only=False, token=None):
     """Notify peer relations that they should stop their proxy services.
 
     Peer units will then be expected to do a relation_set with
@@ -923,24 +992,21 @@ def cluster_sync_rings(peers_only=False, builders_only=False):
         # If we have no peer units just go ahead and broadcast to storage
         # relations. If we have been instructed to only broadcast to peers this
         # should do nothing.
-        broker_token = get_broker_token()
-        broadcast_rings_available(broker_token, peers=False,
+        broadcast_rings_available(broker_token=str(uuid.uuid4()),
                                   storage=not peers_only)
         return
     elif builders_only:
+        if not token:
+            token = str(uuid.uuid4())
+
         # No need to stop proxies if only syncing builders between peers.
-        broker_token = get_broker_token()
-        broadcast_rings_available(broker_token, storage=False,
-                                  builders_only=builders_only)
+        broadcast_rings_available(storage=False, builders_only=True,
+                                  broker_token=token)
         return
 
-    rel_ids = relation_ids('cluster')
-    trigger = str(uuid.uuid4())
-
-    log("Sending request to stop proxy service to all peers (%s)" % (trigger),
-        level=INFO)
-    rq = SwiftProxyClusterRPC().stop_proxy_request(peers_only)
-    for rid in rel_ids:
+    log("Sending stop proxy service request to all peers", level=INFO)
+    rq = SwiftProxyClusterRPC().stop_proxy_request(peers_only, token=token)
+    for rid in relation_ids('cluster'):
         relation_set(relation_id=rid, relation_settings=rq)
 
 
@@ -961,7 +1027,8 @@ def notify_storage_rings_available():
     rings_url = 'http://%s/%s' % (hostname, path)
     trigger = uuid.uuid4()
     # Notify storage nodes that there is a new ring to fetch.
-    log("Notifying storage nodes that new ring is ready for sync.", level=INFO)
+    log("Notifying storage nodes that new rings are ready for sync.",
+        level=INFO)
     for relid in relation_ids('swift-storage'):
         relation_set(relation_id=relid, swift_hash=get_swift_hash(),
                      rings_url=rings_url, trigger=trigger)
@@ -994,6 +1061,34 @@ def get_hostaddr():
         return get_ipv6_addr(exc_list=[config('vip')])[0]
 
     return unit_get('private-address')
+
+
+def is_most_recent_timestamp(timestamp):
+    ts = []
+    for rid in relation_ids('cluster'):
+        for unit in related_units(rid):
+            settings = relation_get(rid=rid, unit=unit)
+            t = settings.get('broker-timestamp')
+            if t:
+                ts.append(t)
+
+    if not ts or not timestamp:
+        return False
+
+    return timestamp >= max(ts)
+
+
+def timestamps_available(excluded_unit):
+    for rid in relation_ids('cluster'):
+        for unit in related_units(rid):
+            if unit == excluded_unit:
+                continue
+
+            settings = relation_get(rid=rid, unit=unit)
+            if settings.get('broker-timestamp'):
+                return True
+
+    return False
 
 
 def is_paused(status_get=status_get):

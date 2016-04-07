@@ -22,7 +22,7 @@ def init_ring_paths(tmpdir):
 
 class SwiftUtilsTestCase(unittest.TestCase):
 
-    @mock.patch('lib.swift_utils.get_broker_token')
+    @mock.patch.object(swift_utils, 'previously_synced')
     @mock.patch('lib.swift_utils.update_www_rings')
     @mock.patch('lib.swift_utils.get_builders_checksum')
     @mock.patch('lib.swift_utils.get_rings_checksum')
@@ -38,12 +38,12 @@ class SwiftUtilsTestCase(unittest.TestCase):
                           mock_log, mock_balance_rings,
                           mock_get_rings_checksum,
                           mock_get_builders_checksum, mock_update_www_rings,
-                          mock_get_broker_token):
-        mock_get_broker_token.return_value = "token1"
+                          mock_previously_synced):
 
         # Make sure same is returned for both so that we don't try to sync
         mock_get_rings_checksum.return_value = None
         mock_get_builders_checksum.return_value = None
+        mock_previously_synced.return_value = True
 
         # Test blocker 1
         mock_is_elected_leader.return_value = False
@@ -77,25 +77,23 @@ class SwiftUtilsTestCase(unittest.TestCase):
         self.assertTrue(mock_set_min_hours.called)
         self.assertTrue(mock_balance_rings.called)
 
+    @mock.patch('lib.swift_utils.previously_synced')
     @mock.patch('lib.swift_utils._load_builder')
     @mock.patch('lib.swift_utils.initialize_ring')
-    @mock.patch('lib.swift_utils.get_broker_token')
     @mock.patch('lib.swift_utils.update_www_rings')
     @mock.patch('lib.swift_utils.get_builders_checksum')
     @mock.patch('lib.swift_utils.get_rings_checksum')
     @mock.patch('lib.swift_utils.balance_rings')
     @mock.patch('lib.swift_utils.log')
     @mock.patch('lib.swift_utils.is_elected_leader')
-    def test_update_rings_multiple_devs(self,
-                                        mock_is_elected_leader,
+    def test_update_rings_multiple_devs(self, mock_is_elected_leader,
                                         mock_log, mock_balance_rings,
                                         mock_get_rings_checksum,
                                         mock_get_builders_checksum,
                                         mock_update_www_rings,
-                                        mock_get_broker_token,
                                         mock_initialize_ring,
                                         mock_load_builder,
-                                        ):
+                                        mock_previously_synced):
         # To avoid the need for swift.common.ring library, mock a basic
         # rings dictionary, keyed by path.
         # Each ring has enough logic to hold a dictionary with a single 'devs'
@@ -115,11 +113,13 @@ class SwiftUtilsTestCase(unittest.TestCase):
 
                 def add_dev(self, dev):
                     mock_rings[self.path]['devs'].append(dev)
+
             return mock_ring(path)
 
         def mock_initialize_ring_fn(path, *args):
             mock_rings.setdefault(path, {'devs': []})
 
+        mock_is_elected_leader.return_value = True
         mock_load_builder.side_effect = mock_load_builder_fn
         mock_initialize_ring.side_effect = mock_initialize_ring_fn
 
@@ -153,7 +153,6 @@ class SwiftUtilsTestCase(unittest.TestCase):
             swift_utils.update_rings(nodes)
             self.assertFalse(mock_add_to_ring.called)
 
-    @mock.patch('lib.swift_utils.get_broker_token')
     @mock.patch('lib.swift_utils.balance_rings')
     @mock.patch('lib.swift_utils.log')
     @mock.patch('lib.swift_utils.is_elected_leader')
@@ -165,9 +164,7 @@ class SwiftUtilsTestCase(unittest.TestCase):
                                                 mock_config,
                                                 mock_is_elected_leader,
                                                 mock_log,
-                                                mock_balance_rings,
-                                                mock_get_broker_token):
-        mock_get_broker_token.return_value = "token1"
+                                                mock_balance_rings):
 
         @swift_utils.sync_builders_and_rings_if_changed
         def mock_balance():
@@ -200,6 +197,8 @@ class SwiftUtilsTestCase(unittest.TestCase):
         finally:
             shutil.rmtree(tmpdir)
 
+    @mock.patch('lib.swift_utils.is_elected_leader', lambda arg: True)
+    @mock.patch.object(swift_utils, 'get_hostaddr', lambda *args: '1.2.3.4')
     @mock.patch('lib.swift_utils.uuid')
     def test_cluster_rpc_stop_proxy_request(self, mock_uuid):
         mock_uuid.uuid4.return_value = 'test-uuid'
@@ -207,9 +206,11 @@ class SwiftUtilsTestCase(unittest.TestCase):
         rq = rpc.stop_proxy_request(peers_only=True)
         self.assertEqual({'trigger': 'test-uuid',
                           'broker-token': None,
-                          'builder-broker': None,
-                          'peers-only': True,
+                          'broker-timestamp': None,
+                          'builder-broker': '1.2.3.4',
+                          'peers-only': 1,
                           'leader-changed-notification': None,
+                          'resync-request': None,
                           'stop-proxy-service': 'test-uuid',
                           'stop-proxy-service-ack': None,
                           'sync-only-builders': None}, rq)
@@ -217,12 +218,17 @@ class SwiftUtilsTestCase(unittest.TestCase):
         rq = rpc.stop_proxy_request()
         self.assertEqual({'trigger': 'test-uuid',
                           'broker-token': None,
-                          'builder-broker': None,
+                          'broker-timestamp': None,
+                          'builder-broker': '1.2.3.4',
                           'peers-only': None,
                           'leader-changed-notification': None,
+                          'resync-request': None,
                           'stop-proxy-service': 'test-uuid',
                           'stop-proxy-service-ack': None,
                           'sync-only-builders': None}, rq)
+
+        template_keys = set(rpc.template())
+        self.assertTrue(set(rq.keys()).issubset(template_keys))
 
     @mock.patch('lib.swift_utils.uuid')
     def test_cluster_rpc_stop_proxy_ack(self, mock_uuid):
@@ -232,39 +238,59 @@ class SwiftUtilsTestCase(unittest.TestCase):
         self.assertEqual({'trigger': 'token2',
                           'broker-token': None,
                           'builder-broker': None,
+                          'broker-timestamp': None,
                           'peers-only': '1',
                           'leader-changed-notification': None,
+                          'resync-request': None,
                           'stop-proxy-service': None,
                           'stop-proxy-service-ack': 'token1',
                           'sync-only-builders': None}, rq)
 
+        template_keys = set(rpc.template())
+        self.assertTrue(set(rq.keys()).issubset(template_keys))
+
+    @mock.patch('lib.swift_utils.is_elected_leader', lambda arg: True)
+    @mock.patch.object(swift_utils, 'get_hostaddr', lambda *args: '1.2.3.4')
+    @mock.patch.object(swift_utils, 'time')
     @mock.patch('lib.swift_utils.uuid')
-    def test_cluster_rpc_sync_request(self, mock_uuid):
+    def test_cluster_rpc_sync_request(self, mock_uuid, mock_time):
+        mock_time.time = mock.Mock(return_value=float(1.234))
         mock_uuid.uuid4.return_value = 'token2'
         rpc = swift_utils.SwiftProxyClusterRPC()
-        rq = rpc.sync_rings_request('HostA', 'token1')
+        rq = rpc.sync_rings_request('token1')
         self.assertEqual({'trigger': 'token2',
                           'broker-token': 'token1',
-                          'builder-broker': 'HostA',
+                          'broker-timestamp': '1.234000',
+                          'builder-broker': '1.2.3.4',
                           'peers-only': None,
                           'leader-changed-notification': None,
+                          'resync-request': None,
                           'stop-proxy-service': None,
                           'stop-proxy-service-ack': None,
                           'sync-only-builders': None}, rq)
 
+        template_keys = set(rpc.template())
+        self.assertTrue(set(rq.keys()).issubset(template_keys))
+
+    @mock.patch('lib.swift_utils.is_elected_leader', lambda arg: True)
     @mock.patch('lib.swift_utils.uuid')
     def test_cluster_rpc_notify_leader_changed(self, mock_uuid):
-        mock_uuid.uuid4.return_value = 'token1'
+        mock_uuid.uuid4.return_value = 'e4b67426-6cc0-4aa3-829d-227999cd0a75'
         rpc = swift_utils.SwiftProxyClusterRPC()
-        rq = rpc.notify_leader_changed()
-        self.assertEqual({'trigger': 'token1',
+        rq = rpc.notify_leader_changed('token1')
+        self.assertEqual({'trigger': 'e4b67426-6cc0-4aa3-829d-227999cd0a75',
                           'broker-token': None,
                           'builder-broker': None,
+                          'broker-timestamp': None,
                           'peers-only': None,
                           'leader-changed-notification': 'token1',
                           'stop-proxy-service': None,
                           'stop-proxy-service-ack': None,
+                          'resync-request': None,
                           'sync-only-builders': None}, rq)
+
+        template_keys = set(rpc.template().keys())
+        self.assertTrue(set(rq.keys()).issubset(template_keys))
 
     def test_all_responses_equal(self):
         responses = [{'a': 1, 'c': 3}]
@@ -300,6 +326,48 @@ class SwiftUtilsTestCase(unittest.TestCase):
 
         rsps = []
         self.assertIsNone(swift_utils.get_first_available_value(rsps, 'key3'))
+
+    @mock.patch.object(swift_utils, 'relation_get')
+    @mock.patch.object(swift_utils, 'related_units', lambda arg: ['proxy/1'])
+    @mock.patch.object(swift_utils, 'relation_ids', lambda arg: ['cluster:1'])
+    def test_is_most_recent_timestamp(self, mock_rel_get):
+        mock_rel_get.return_value = {'broker-timestamp': '1111'}
+        self.assertTrue(swift_utils.is_most_recent_timestamp('1234'))
+        mock_rel_get.return_value = {'broker-timestamp': '2234'}
+        self.assertFalse(swift_utils.is_most_recent_timestamp('1234'))
+        mock_rel_get.return_value = {}
+        self.assertFalse(swift_utils.is_most_recent_timestamp('1234'))
+        mock_rel_get.return_value = {'broker-timestamp': '2234'}
+        self.assertFalse(swift_utils.is_most_recent_timestamp(None))
+
+    @mock.patch.object(swift_utils, 'relation_get')
+    @mock.patch.object(swift_utils, 'related_units', lambda arg: ['proxy/1'])
+    @mock.patch.object(swift_utils, 'relation_ids', lambda arg: ['cluster:1'])
+    def test_timestamps_available(self, mock_rel_get):
+        mock_rel_get.return_value = {}
+        self.assertFalse(swift_utils.timestamps_available('proxy/1'))
+        mock_rel_get.return_value = {'broker-timestamp': '1234'}
+        self.assertFalse(swift_utils.timestamps_available('proxy/1'))
+        mock_rel_get.return_value = {'broker-timestamp': '1234'}
+        self.assertTrue(swift_utils.timestamps_available('proxy/2'))
+
+    def _test_is_paused_unknown(self):
+        def fake_status_get():
+            return ("unknown", "")
+
+        self.assertFalse(swift_utils.is_paused(status_get=fake_status_get))
+
+    def _test_is_paused_paused(self):
+        def fake_status_get():
+            return ("maintenance", "Paused")
+
+        self.assertTrue(swift_utils.is_paused(status_get=fake_status_get))
+
+    def _test_is_paused_other_maintenance(self):
+        def fake_status_get():
+            return ("maintenance", "Hook")
+
+        self.assertFalse(swift_utils.is_paused(status_get=fake_status_get))
 
     @mock.patch('lib.swift_utils.is_paused')
     @mock.patch('lib.swift_utils.config')

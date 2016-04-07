@@ -33,6 +33,10 @@ from lib.swift_utils import (
     get_first_available_value,
     all_responses_equal,
     ensure_www_dir_permissions,
+    sync_builders_and_rings_if_changed,
+    cluster_sync_rings,
+    is_most_recent_timestamp,
+    timestamps_available,
     is_paused,
     pause_aware_restart_on_change,
     assess_status,
@@ -55,7 +59,6 @@ from charmhelpers.core.hookenv import (
     DEBUG,
     INFO,
     WARNING,
-    ERROR,
     Hooks, UnregisteredHookError,
     open_port,
     status_set,
@@ -146,7 +149,7 @@ def config_changed():
         do_openstack_upgrade(CONFIGS)
         status_set('maintenance', 'Running openstack upgrade')
 
-    status_set('maintenance', 'Updating and balancing rings')
+    status_set('maintenance', 'Updating and (maybe) balancing rings')
     update_rings(min_part_hours=config('min-hours'))
 
     if not config('disable-ring-balance') and is_elected_leader(SWIFT_HA_RES):
@@ -242,11 +245,11 @@ def storage_changed():
     leader we ignore this event and wait for a resync request from the leader.
     """
     if not is_elected_leader(SWIFT_HA_RES):
-        log("Not the leader - ignoring storage relation until leader ready.",
-            level=DEBUG)
+        log("Not the leader - deferring storage relation change to leader "
+            "unit.", level=DEBUG)
         return
 
-    log("Leader established, updating ring builders", level=INFO)
+    log("Storage relation changed -processing", level=DEBUG)
     host_ip = get_host_ip()
     if not host_ip:
         log("No host ip found in storage relation - deferring storage "
@@ -325,7 +328,7 @@ def cluster_joined(relation_id=None):
         private_addr = unit_get('private-address')
 
 
-def all_peers_stopped(responses):
+def is_all_peers_stopped(responses):
     """Establish whether all peers have stopped their proxy services.
 
     Each peer unit will set stop-proxy-service-ack to rq value to indicate that
@@ -339,11 +342,15 @@ def all_peers_stopped(responses):
     ack_key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK
     token = relation_get(attribute=rq_key, unit=local_unit())
     if not token or token != responses[0].get(ack_key):
-        log("Unmatched token in ack (expected=%s, got=%s)" %
+        log("Token mismatch, rq and ack tokens differ (expected ack=%s, "
+            "got=%s)" %
             (token, responses[0].get(ack_key)), level=DEBUG)
         return False
 
     if not all_responses_equal(responses, ack_key):
+        log("Not all ack responses are equal. Either we are still waiting "
+            "for responses or we were not the request originator.",
+            level=DEBUG)
         return False
 
     return True
@@ -357,20 +364,44 @@ def cluster_leader_actions():
     log("Cluster changed by unit=%s (local is leader)" % (remote_unit()),
         level=DEBUG)
 
-    # If we have received an ack, check other units
-    settings = relation_get() or {}
-    ack_key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK
+    rx_settings = relation_get() or {}
+    tx_settings = relation_get(unit=local_unit()) or {}
 
-    # Protect against leader changing mid-sync
-    if settings.get(SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC):
-        log("Sync request received yet this is leader unit. This would "
-            "indicate that the leader has changed mid-sync - stopping proxy "
-            "and notifying peers", level=ERROR)
-        service_stop('swift-proxy')
-        SwiftProxyClusterRPC().notify_leader_changed()
+    rx_rq_token = rx_settings.get(SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC)
+    rx_ack_token = rx_settings.get(SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK)
+
+    tx_rq_token = tx_settings.get(SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC)
+    tx_ack_token = tx_settings.get(SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK)
+
+    rx_leader_changed = \
+        rx_settings.get(SwiftProxyClusterRPC.KEY_NOTIFY_LEADER_CHANGED)
+    if rx_leader_changed:
+        log("Leader change notification received and this is leader so "
+            "retrying sync.", level=INFO)
+        # FIXME: check that we were previously part of a successful sync to
+        #        ensure we have good rings.
+        cluster_sync_rings(peers_only=tx_settings.get('peers-only', False),
+                           token=rx_leader_changed)
         return
-    elif ack_key in settings:
-        token = settings[ack_key]
+
+    rx_resync_request = \
+        rx_settings.get(SwiftProxyClusterRPC.KEY_REQUEST_RESYNC)
+    resync_request_ack_key = SwiftProxyClusterRPC.KEY_REQUEST_RESYNC_ACK
+    tx_resync_request_ack = tx_settings.get(resync_request_ack_key)
+    if rx_resync_request and tx_resync_request_ack != rx_resync_request:
+        log("Unit '%s' has requested a resync" % (remote_unit()),
+            level=INFO)
+        cluster_sync_rings(peers_only=True)
+        relation_set(**{resync_request_ack_key: rx_resync_request})
+        return
+
+    # If we have received an ack token ensure it is not associated with a
+    # request we received from another peer. If it is, this would indicate
+    # a leadership change during a sync and this unit will abort the sync or
+    # attempt to restore the original leader so to be able to complete the
+    # sync.
+
+    if rx_ack_token and rx_ack_token == tx_rq_token:
         # Find out if all peer units have been stopped.
         responses = []
         for rid in relation_ids('cluster'):
@@ -378,21 +409,43 @@ def cluster_leader_actions():
                 responses.append(relation_get(rid=rid, unit=unit))
 
         # Ensure all peers stopped before starting sync
-        if all_peers_stopped(responses):
+        if is_all_peers_stopped(responses):
             key = 'peers-only'
             if not all_responses_equal(responses, key, must_exist=False):
                 msg = ("Did not get equal response from every peer unit for "
                        "'%s'" % (key))
                 raise SwiftProxyCharmException(msg)
 
-            peers_only = int(get_first_available_value(responses, key,
-                                                       default=0))
+            peers_only = bool(get_first_available_value(responses, key,
+                                                        default=0))
             log("Syncing rings and builders (peers-only=%s)" % (peers_only),
                 level=DEBUG)
-            broadcast_rings_available(token, storage=not peers_only)
+            broadcast_rings_available(broker_token=rx_ack_token,
+                                      storage=not peers_only)
         else:
+            key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK
+            acks = ', '.join([rsp[key] for rsp in responses if key in rsp])
             log("Not all peer apis stopped - skipping sync until all peers "
-                "ready (got %s)" % (responses), level=INFO)
+                "ready (current='%s', token='%s')" % (acks, tx_ack_token),
+                level=INFO)
+    elif ((rx_ack_token and (rx_ack_token == tx_ack_token)) or
+          (rx_rq_token and (rx_rq_token == rx_ack_token))):
+        log("It appears that the cluster leader has changed mid-sync - "
+            "stopping proxy service", level=WARNING)
+        service_stop('swift-proxy')
+        broker = rx_settings.get('builder-broker')
+        if broker:
+            # If we get here, manual intervention will be required in order
+            # to restore the cluster.
+            msg = ("Failed to restore previous broker '%s' as leader" %
+                   (broker))
+            raise SwiftProxyCharmException(msg)
+        else:
+            msg = ("No builder-broker on rx_settings relation from '%s' - "
+                   "unable to attempt leader restore" % (remote_unit()))
+            raise SwiftProxyCharmException(msg)
+    else:
+        log("Not taking any sync actions", level=DEBUG)
 
     CONFIGS.write_all()
 
@@ -404,31 +457,74 @@ def cluster_non_leader_actions():
     """
     log("Cluster changed by unit=%s (local is non-leader)" % (remote_unit()),
         level=DEBUG)
-    settings = relation_get() or {}
+    rx_settings = relation_get() or {}
+    tx_settings = relation_get(unit=local_unit()) or {}
+
+    token = rx_settings.get(SwiftProxyClusterRPC.KEY_NOTIFY_LEADER_CHANGED)
+    if token:
+        log("Leader-changed notification received from peer unit. Since "
+            "this most likely occurred during a ring sync proxies will "
+            "be disabled until the leader is restored and a fresh sync "
+            "request is set out", level=WARNING)
+        service_stop("swift-proxy")
+        return
+
+    rx_rq_token = rx_settings.get(SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC)
 
     # Check whether we have been requested to stop proxy service
-    rq_key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC
-    token = settings.get(rq_key, None)
-    if token:
+    if rx_rq_token:
         log("Peer request to stop proxy service received (%s) - sending ack" %
-            (token), level=INFO)
+            (rx_rq_token), level=INFO)
         service_stop('swift-proxy')
-        peers_only = settings.get('peers-only', None)
-        rq = SwiftProxyClusterRPC().stop_proxy_ack(echo_token=token,
+        peers_only = rx_settings.get('peers-only', None)
+        rq = SwiftProxyClusterRPC().stop_proxy_ack(echo_token=rx_rq_token,
                                                    echo_peers_only=peers_only)
         relation_set(relation_settings=rq)
         return
 
     # Check if there are any builder files we can sync from the leader.
-    log("Non-leader peer - checking if updated rings available", level=DEBUG)
-    broker = settings.get('builder-broker', None)
+    broker = rx_settings.get('builder-broker', None)
+    broker_token = rx_settings.get('broker-token', None)
+    broker_timestamp = rx_settings.get('broker-timestamp', None)
+    tx_ack_token = tx_settings.get(SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK)
     if not broker:
-        log("No update available", level=DEBUG)
+        log("No ring/builder update available", level=DEBUG)
         if not is_paused():
             service_start('swift-proxy')
+
+        return
+    elif broker_token:
+        if tx_ack_token:
+            if broker_token == tx_ack_token:
+                log("Broker and ACK tokens match (%s)" % (broker_token),
+                    level=DEBUG)
+            else:
+                log("Received ring/builder update notification but tokens do "
+                    "not match (broker-token=%s/ack-token=%s)" %
+                    (broker_token, tx_ack_token), level=WARNING)
+                return
+        else:
+            log("Broker token available without handshake, assuming we just "
+                "joined and rings won't change", level=DEBUG)
+    else:
+        log("Not taking any sync actions", level=DEBUG)
         return
 
-    builders_only = int(settings.get('sync-only-builders', 0))
+    # If we upgrade from cluster that did not use timestamps, the new peer will
+    # need to request a re-sync from the leader
+    if not is_most_recent_timestamp(broker_timestamp):
+        if not timestamps_available(excluded_unit=remote_unit()):
+            log("Requesting resync")
+            rq = SwiftProxyClusterRPC().request_resync(broker_token)
+            relation_set(relation_settings=rq)
+        else:
+            log("Did not receive most recent broker timestamp but timestamps "
+                "are available - waiting for next timestamp", level=INFO)
+
+        return
+
+    log("Ring/builder update available", level=DEBUG)
+    builders_only = int(rx_settings.get('sync-only-builders', 0))
     path = os.path.basename(get_www_dir())
     try:
         sync_proxy_rings('http://%s/%s' % (broker, path),
@@ -436,7 +532,7 @@ def cluster_non_leader_actions():
     except CalledProcessError:
         log("Ring builder sync failed, builders not yet available - "
             "leader not ready?", level=WARNING)
-        return None
+        return
 
     # Re-enable the proxy once all builders and rings are synced
     if fully_synced():
@@ -452,16 +548,6 @@ def cluster_non_leader_actions():
 @hooks.hook('cluster-relation-changed')
 @pause_aware_restart_on_change(restart_map())
 def cluster_changed():
-    key = SwiftProxyClusterRPC.KEY_NOTIFY_LEADER_CHANGED
-    leader_changed = relation_get(attribute=key)
-    if leader_changed:
-        log("Leader changed notification received from peer unit. Since this "
-            "most likely occurred during a ring sync proxies will be "
-            "disabled until the leader is restored and a fresh sync request "
-            "is set out", level=WARNING)
-        service_stop("swift-proxy")
-        return
-
     if is_elected_leader(SWIFT_HA_RES):
         cluster_leader_actions()
     else:
@@ -469,6 +555,7 @@ def cluster_changed():
 
 
 @hooks.hook('ha-relation-changed')
+@sync_builders_and_rings_if_changed
 def ha_relation_changed():
     clustered = relation_get('clustered')
     if clustered:

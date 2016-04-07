@@ -1,0 +1,29 @@
+== Swift Charm Ring Management ==
+
+Swift uses rings and builders to manage data distribution across storage devices
+in the cluster. More information on this can be found in the upstream
+documentation [0].
+
+In order to function correctly, the rings and builders need to be the same
+across all swift proxy units and the rings need to be distributed to storage
+units. The swift proxy charm achieves this by electing a leader unit and having
+that unit manage ring and builder files by updating them when new nodes or
+devices are added to the cluster and distributing those files to other nodes in
+the cluster.
+
+Since over time the leader may change, rings syncs use acknowledgements from
+peer units to determine whether a synchronisation has completed. This was if
+the leader switches to another unit, we are able to know that that unit has
+up-to-date ring and builder files.
+
+When new devices are added to storage units, the leader proxy unit is notified
+and adds them to the ring. Once complete, the leader unit will broadcast a
+notification that rings and builders are ready to be synced across the cluster
+(only proxy units get builders) and each unit in the cluster should then begin
+syncing from the leader and acknowledge receipt.
+
+During synchronisation, swift-proxy services are stopped in order to avoid
+having requests being handled while rings are being updated.
+
+
+[0] http://docs.openstack.org/developer/swift/overview_ring.html
