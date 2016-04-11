@@ -13,12 +13,11 @@ from mock import patch, MagicMock
 sys.modules['apt'] = MagicMock()
 sys.modules['apt_pkg'] = MagicMock()
 
-with patch('charmhelpers.contrib.hardening.harden.harden') as mock_dec:
+with patch('charmhelpers.contrib.hardening.harden.harden') as mock_dec, \
+        patch('lib.swift_utils.register_configs') as configs:
     mock_dec.side_effect = (lambda *dargs, **dkwargs: lambda f:
                             lambda *args, **kwargs: f(*args, **kwargs))
-    with patch('lib.swift_utils.is_paused') as is_paused:
-        with patch('lib.swift_utils.register_configs') as configs:
-            import actions.actions
+    import actions.actions
 
 
 class CharmTestCase(unittest.TestCase):
@@ -44,7 +43,7 @@ class PauseTestCase(CharmTestCase):
 
     def setUp(self):
         super(PauseTestCase, self).setUp(
-            actions.actions, ["service_pause", "HookData", "kv",
+            actions.actions, ["service_pause", "set_unit_paused",
                               "assess_status"])
 
         class FakeArgs(object):
@@ -84,17 +83,15 @@ class PauseTestCase(CharmTestCase):
 
     def test_pause_sets_value(self):
         """Pause action sets the unit-paused value to True."""
-        self.HookData()().return_value = True
-
         actions.actions.pause(self.args)
-        self.kv().set.assert_called_with('unit-paused', True)
+        self.set_unit_paused.assert_called_once_with()
 
 
 class ResumeTestCase(CharmTestCase):
 
     def setUp(self):
         super(ResumeTestCase, self).setUp(
-            actions.actions, ["service_resume", "HookData", "kv",
+            actions.actions, ["service_resume", "clear_unit_paused",
                               "assess_status"])
 
         class FakeArgs(object):
@@ -133,10 +130,8 @@ class ResumeTestCase(CharmTestCase):
 
     def test_resume_sets_value(self):
         """Resume action sets the unit-paused value to False."""
-        self.HookData()().return_value = True
-
         actions.actions.resume(self.args)
-        self.kv().set.assert_called_with('unit-paused', False)
+        self.clear_unit_paused.assert_called_once_with()
 
 
 class GetActionParserTestCase(unittest.TestCase):

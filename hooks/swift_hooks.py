@@ -37,8 +37,6 @@ from lib.swift_utils import (
     cluster_sync_rings,
     is_most_recent_timestamp,
     timestamps_available,
-    is_paused,
-    pause_aware_restart_on_change,
     assess_status,
 )
 
@@ -99,6 +97,7 @@ extra_pkgs = [
 
 hooks = Hooks()
 CONFIGS = register_configs()
+restart_on_change = openstack.pausable_restart_on_change
 
 
 @hooks.hook('install.real')
@@ -122,7 +121,7 @@ def install():
 
 
 @hooks.hook('config-changed')
-@pause_aware_restart_on_change(restart_map())
+@restart_on_change(restart_map())
 @harden()
 def config_changed():
     if is_elected_leader(SWIFT_HA_RES):
@@ -180,7 +179,7 @@ def keystone_joined(relid=None):
 
 
 @hooks.hook('identity-service-relation-changed')
-@pause_aware_restart_on_change(restart_map())
+@restart_on_change(restart_map())
 def keystone_changed():
     configure_https()
 
@@ -237,7 +236,7 @@ def update_rsync_acls():
 
 
 @hooks.hook('swift-storage-relation-changed')
-@pause_aware_restart_on_change(restart_map())
+@restart_on_change(restart_map())
 def storage_changed():
     """Storage relation.
 
@@ -289,14 +288,14 @@ def storage_changed():
             nodes.append(node)
 
     update_rings(nodes)
-    if not is_paused():
+    if not openstack.is_unit_paused_set():
         # Restart proxy here in case no config changes made (so
-        # pause_aware_restart_on_change() ineffective).
+        # restart_on_change() ineffective).
         service_restart('swift-proxy')
 
 
 @hooks.hook('swift-storage-relation-broken')
-@pause_aware_restart_on_change(restart_map())
+@restart_on_change(restart_map())
 def storage_broken():
     CONFIGS.write_all()
 
@@ -489,7 +488,7 @@ def cluster_non_leader_actions():
     tx_ack_token = tx_settings.get(SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK)
     if not broker:
         log("No ring/builder update available", level=DEBUG)
-        if not is_paused():
+        if not openstack.is_unit_paused_set():
             service_start('swift-proxy')
 
         return
@@ -538,7 +537,7 @@ def cluster_non_leader_actions():
     if fully_synced():
         log("Ring builders synced - starting proxy", level=INFO)
         CONFIGS.write_all()
-        if not is_paused():
+        if not openstack.is_unit_paused_set():
             service_start('swift-proxy')
     else:
         log("Not all builders and rings synced yet - waiting for peer sync "
@@ -546,7 +545,7 @@ def cluster_non_leader_actions():
 
 
 @hooks.hook('cluster-relation-changed')
-@pause_aware_restart_on_change(restart_map())
+@restart_on_change(restart_map())
 def cluster_changed():
     if is_elected_leader(SWIFT_HA_RES):
         cluster_leader_actions()
@@ -636,7 +635,7 @@ def configure_https():
     if os.path.exists('/usr/sbin/a2enconf'):
         check_call(['a2enconf', 'swift-rings'])
 
-    if not is_paused():
+    if not openstack.is_unit_paused_set():
         # TODO: improve this by checking if local CN certs are available
         # first then checking reload status (see LP #1433114).
         service_reload('apache2', restart_on_failure=True)

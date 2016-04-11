@@ -16,12 +16,11 @@ sys.path.append("hooks")
 sys.modules['apt'] = MagicMock()
 sys.modules['apt_pkg'] = MagicMock()
 
-with patch('hooks.charmhelpers.contrib.hardening.harden.harden') as mock_dec:
+with patch('hooks.charmhelpers.contrib.hardening.harden.harden') as mock_dec, \
+        patch('hooks.charmhelpers.core.hookenv.log'):
     mock_dec.side_effect = (lambda *dargs, **dkwargs: lambda f:
                             lambda *args, **kwargs: f(*args, **kwargs))
-    with patch('hooks.charmhelpers.core.hookenv.log'):
-        with patch('lib.swift_utils.is_paused') as is_paused:
-            import swift_hooks
+    import swift_hooks
 
 
 class SwiftHooksTestCase(unittest.TestCase):

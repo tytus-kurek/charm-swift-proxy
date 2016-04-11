@@ -5,10 +5,8 @@ import tempfile
 import uuid
 import unittest
 
-from mock import patch
 with mock.patch('charmhelpers.core.hookenv.config'):
-    with patch('lib.swift_utils.is_paused') as is_paused:
-        import lib.swift_utils as swift_utils
+    import lib.swift_utils as swift_utils
 
 
 def init_ring_paths(tmpdir):
@@ -351,57 +349,57 @@ class SwiftUtilsTestCase(unittest.TestCase):
         mock_rel_get.return_value = {'broker-timestamp': '1234'}
         self.assertTrue(swift_utils.timestamps_available('proxy/2'))
 
-    def _test_is_paused_unknown(self):
-        def fake_status_get():
-            return ("unknown", "")
-
-        self.assertFalse(swift_utils.is_paused(status_get=fake_status_get))
-
-    def _test_is_paused_paused(self):
-        def fake_status_get():
-            return ("maintenance", "Paused")
-
-        self.assertTrue(swift_utils.is_paused(status_get=fake_status_get))
-
-    def _test_is_paused_other_maintenance(self):
-        def fake_status_get():
-            return ("maintenance", "Hook")
-
-        self.assertFalse(swift_utils.is_paused(status_get=fake_status_get))
-
-    @mock.patch('lib.swift_utils.is_paused')
     @mock.patch('lib.swift_utils.config')
     @mock.patch('lib.swift_utils.set_os_workload_status')
     @mock.patch('lib.swift_utils.SwiftRingContext.__call__')
-    @mock.patch('lib.swift_utils.status_set')
     @mock.patch('lib.swift_utils.has_minimum_zones')
     @mock.patch('lib.swift_utils.relation_ids')
-    def test_assess_status(self, relation_ids, has_min_zones, status_set,
-                           ctxt, workload_status, config, is_paused):
+    def customer_check_assess_status(
+            self, relation_ids, has_min_zones,
+            ctxt, workload_status, config):
         config.return_value = 3
 
-        is_paused.return_value = True
-        swift_utils.assess_status(None)
-        status_set.assert_called_with('maintenance',
-                                      "Paused. Use 'resume' action to resume "
-                                      "normal service.")
-
-        is_paused.return_value = False
         relation_ids.return_value = []
-        swift_utils.assess_status(None)
-        status_set.assert_called_with('blocked', 'Missing relation: storage')
+        s, m = swift_utils.customer_check_assess_status(None)
+        assert s, m == ('blocked', 'Missing relation: storage')
 
         relation_ids.return_value = ['swift-storage:1']
 
         ctxt.return_value = {'allowed_hosts': ['1.2.3.4']}
-        swift_utils.assess_status(None)
-        status_set.assert_called_with('blocked',
-                                      'Not enough related storage nodes')
+        s, m = swift_utils.customer_check_assess_status(None)
+        assert s, m == ('blocked',
+                        'Not enough related storage nodes')
 
         ctxt.return_value = {'allowed_hosts': ['1.2.3.4', '2.3.4.5',
                                                '3.4.5.6']}
         has_min_zones.return_value = False
-        swift_utils.assess_status(None)
-        status_set.assert_called_with('blocked',
-                                      'Not enough storage zones for minimum '
-                                      'replicas')
+        s, m = swift_utils.customer_check_assess_status(None)
+        assert s, m == ('blocked',
+                        'Not enough storage zones for minimum '
+                        'replicas')
+
+    def test_assess_status(self):
+        with mock.patch.object(swift_utils, 'assess_status_func') as asf:
+            callee = mock.MagicMock()
+            asf.return_value = callee
+            swift_utils.assess_status('test-config')
+            asf.assert_called_once_with('test-config', None)
+            callee.assert_called_once_with()
+
+    @mock.patch.object(swift_utils, 'relation_ids')
+    @mock.patch.object(swift_utils, 'services')
+    @mock.patch.object(swift_utils, 'make_assess_status_func')
+    def test_assess_status_func(self,
+                                make_assess_status_func,
+                                services,
+                                relation_ids):
+        relation_ids.return_value = True
+        services.return_value = 's1'
+        required_interfaces = {'identity': ['identity-service']}
+        swift_utils.assess_status_func('test-config')
+        relation_ids.assert_called_once_with('identity-service')
+        # ports=None whilst port checks are disabled.
+        make_assess_status_func.assert_called_once_with(
+            'test-config', required_interfaces,
+            charm_func=swift_utils.customer_check_assess_status,
+            services='s1', ports=None)

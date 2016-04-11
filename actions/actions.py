@@ -9,7 +9,10 @@ sys.path.append('hooks/')
 
 from charmhelpers.core.host import service_pause, service_resume
 from charmhelpers.core.hookenv import action_fail
-from charmhelpers.core.unitdata import HookData, kv
+from charmhelpers.contrib.openstack.utils import (
+    set_unit_paused,
+    clear_unit_paused,
+)
 from lib.swift_utils import assess_status, services
 from swift_hooks import CONFIGS
 
@@ -25,6 +28,11 @@ def get_action_parser(actions_yaml_path, action_name,
     return parser
 
 
+# NOTE(ajkavangh) - swift-proxy has been written with a pause that predates the
+# enhanced pause-resume, and allowsa --services argument to be passed to
+# control the services that are stopped/started.  Thus, not knowing if changing
+# this will break other code, the bulk of this custom code has been retained.
+
 def pause(args):
     """Pause all the swift services.
 
@@ -34,9 +42,8 @@ def pause(args):
         stopped = service_pause(service)
         if not stopped:
             raise Exception("{} didn't stop cleanly.".format(service))
-    with HookData()():
-        kv().set('unit-paused', True)
-    assess_status(CONFIGS)
+    set_unit_paused()
+    assess_status(CONFIGS, args.services)
 
 
 def resume(args):
@@ -48,9 +55,8 @@ def resume(args):
         started = service_resume(service)
         if not started:
             raise Exception("{} didn't start cleanly.".format(service))
-    with HookData()():
-        kv().set('unit-paused', False)
-    assess_status(CONFIGS)
+    clear_unit_paused()
+    assess_status(CONFIGS, args.services)
 
 
 # A dictionary of all the defined actions to callables (which take

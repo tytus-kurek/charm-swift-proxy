@@ -28,7 +28,7 @@ from charmhelpers.contrib.openstack.utils import (
     get_os_codename_package,
     get_os_codename_install_source,
     configure_installation_source,
-    set_os_workload_status,
+    make_assess_status_func,
 )
 from charmhelpers.contrib.hahelpers.cluster import (
     is_elected_leader,
@@ -46,8 +46,6 @@ from charmhelpers.core.hookenv import (
     relation_set,
     relation_ids,
     related_units,
-    status_get,
-    status_set,
 )
 from charmhelpers.fetch import (
     apt_update,
@@ -57,7 +55,6 @@ from charmhelpers.fetch import (
 )
 from charmhelpers.core.host import (
     lsb_release,
-    restart_on_change,
 )
 from charmhelpers.contrib.network.ip import (
     format_ipv6_addr,
@@ -66,10 +63,6 @@ from charmhelpers.contrib.network.ip import (
 )
 from charmhelpers.core.decorators import (
     retry_on_exception,
-)
-from charmhelpers.core.unitdata import (
-    HookData,
-    kv,
 )
 
 
@@ -1091,25 +1084,6 @@ def timestamps_available(excluded_unit):
     return False
 
 
-def is_paused(status_get=status_get):
-    """Is the unit paused?"""
-    with HookData()():
-        if kv().get('unit-paused'):
-            return True
-        else:
-            return False
-
-
-def pause_aware_restart_on_change(restart_map):
-    """Avoids restarting services if config changes when unit is paused."""
-    def wrapper(f):
-        if is_paused():
-            return f
-        else:
-            return restart_on_change(restart_map)(f)
-    return wrapper
-
-
 def has_minimum_zones(rings):
     """Determine if enough zones exist to satisfy minimum replicas"""
     for ring in rings:
@@ -1127,31 +1101,27 @@ def has_minimum_zones(rings):
     return True
 
 
-def assess_status(configs):
-    """Assess status of current unit"""
-    required_interfaces = {}
+def customer_check_assess_status(configs):
+    """Custom check function provided to assess_status() to check the current
+    status of current unit beyond checking that the relevant services are
+    running
 
-    if is_paused():
-        status_set("maintenance",
-                   "Paused. Use 'resume' action to resume normal service.")
-        return
-
+    @param configs: An OSConfigRenderer object of the current services
+    @returns (status, message): The outcome of the checks.
+    """
     # Check for required swift-storage relation
     if len(relation_ids('swift-storage')) < 1:
-        status_set('blocked', 'Missing relation: storage')
-        return
+        return ('blocked', 'Missing relation: storage')
 
     # Verify allowed_hosts is populated with enough unit IP addresses
     ctxt = SwiftRingContext()()
     if len(ctxt['allowed_hosts']) < config('replicas'):
-        status_set('blocked', 'Not enough related storage nodes')
-        return
+        return ('blocked', 'Not enough related storage nodes')
 
     # Verify there are enough storage zones to satisfy minimum replicas
     rings = [r for r in SWIFT_RINGS.itervalues()]
     if not has_minimum_zones(rings):
-        status_set('blocked', 'Not enough storage zones for minimum replicas')
-        return
+        return ('blocked', 'Not enough storage zones for minimum replicas')
 
     if config('prefer-ipv6'):
         for rid in relation_ids('swift-storage'):
@@ -1159,14 +1129,48 @@ def assess_status(configs):
                 addr = relation_get(attribute='private-address', unit=unit,
                                     rid=rid)
                 if not is_ipv6(addr):
-                    status_set('blocked', 'Did not get IPv6 address from '
-                               'storage relation (got=%s)' % (addr))
-                    return
+                    return ('blocked',
+                            'Did not get IPv6 address from '
+                            'storage relation (got=%s)' % (addr))
 
+    return 'active', 'Unit is ready'
+
+
+def assess_status(configs, check_services=None):
+    """Assess status of current unit
+    Decides what the state of the unit should be based on the current
+    configuration.
+    SIDE EFFECT: calls set_os_workload_status(...) which sets the workload
+    status of the unit.
+    Also calls status_set(...) directly if paused state isn't complete.
+    @param configs: a templating.OSConfigRenderer() object
+    @returns None - this function is executed for its side-effect
+    """
+    assess_status_func(configs, check_services)()
+
+
+def assess_status_func(configs, check_services=None):
+    """Helper function to create the function that will assess_status() for
+    the unit.
+    Uses charmhelpers.contrib.openstack.utils.make_assess_status_func() to
+    create the appropriate status function and then returns it.
+    Used directly by assess_status() and also for pausing and resuming
+    the unit.
+
+    NOTE(ajkavanagh) ports are not checked due to race hazards with services
+    that don't behave sychronously w.r.t their service scripts.  e.g.
+    apache2.
+    @param configs: a templating.OSConfigRenderer() object
+    @param check_services: a list of services to check.  If None, then
+    services() is used instead.  To not check services pass an empty list.
+    @return f() -> None : a function that assesses the unit's workload status
+    """
+    if check_services is None:
+        check_services = services()
+    required_interfaces = {}
     if relation_ids('identity-service'):
         required_interfaces['identity'] = ['identity-service']
-
-    if required_interfaces:
-        set_os_workload_status(configs, required_interfaces)
-    else:
-        status_set('active', 'Unit is ready')
+    return make_assess_status_func(
+        configs, required_interfaces,
+        charm_func=customer_check_assess_status,
+        services=check_services, ports=None)

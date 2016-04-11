@@ -579,7 +579,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         # Pause the unit
         u.log.debug('Pausing the unit...')
         pause_action_id = u.run_action(sentry, "pause")
-        assert u.wait_on_action(pause_action_id), "Resume action failed."
+        assert u.wait_on_action(pause_action_id), "Pause action failed."
         # Make config change, check for service restarts
         u.log.debug('Making config change on {}...'.format(juju_service))
         self.d.configure(juju_service, set_alternate)
