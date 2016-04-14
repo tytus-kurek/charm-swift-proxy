@@ -842,7 +842,7 @@ def update_rings(nodes=[], min_part_hours=None):
 
     balance_required = False
 
-    if min_part_hours:
+    if min_part_hours is not None:
         # NOTE: no need to stop the proxy since we are not changing the rings,
         # only the builder.
 
