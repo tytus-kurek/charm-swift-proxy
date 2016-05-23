@@ -48,7 +48,11 @@ class SwiftContextTestCase(unittest.TestCase):
         with mock.patch('lib.swift_context.os.environ.get') as mock_env_get:
             mock_env_get.return_value = str(uuid.uuid4())
             hash_ = swift_context.get_swift_hash()
-            mock_env_get.assert_called_with('JUJU_ENV_UUID')
+            mock_env_get.assert_has_calls([
+                mock.call('JUJU_MODEL_UUID'),
+                mock.call('JUJU_ENV_UUID',
+                          mock_env_get.return_value)
+            ])
 
         with open(tmpfile, 'r') as fd:
             self.assertEqual(hash_, fd.read())
