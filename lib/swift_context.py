@@ -202,7 +202,9 @@ def get_swift_hash():
         with open(SWIFT_HASH_FILE, 'w') as hashfile:
             hashfile.write(swift_hash)
     else:
-        swift_hash = str(uuid.uuid3(uuid.UUID(os.environ.get("JUJU_ENV_UUID")),
+        model_uuid = os.environ.get("JUJU_ENV_UUID",
+                                    os.environ.get("JUJU_MODEL_UUID"))
+        swift_hash = str(uuid.uuid3(uuid.UUID(model_uuid),
                                     service_name()))
         with open(SWIFT_HASH_FILE, 'w') as hashfile:
             hashfile.write(swift_hash)
