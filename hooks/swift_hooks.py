@@ -196,9 +196,23 @@ def keystone_joined(relid=None):
     region = config('region')
     roles = config('operator-roles')
 
-    relation_set(service='swift', region=region, public_url=public_url,
-                 internal_url=internal_url, admin_url=admin_url,
-                 requested_roles=roles, relation_id=relid)
+    s3_public_url = ('%s:%s' %
+                     (canonical_url(CONFIGS, PUBLIC), port))
+    s3_internal_url = ('%s:%s' %
+                       (canonical_url(CONFIGS, INTERNAL), port))
+    s3_admin_url = '%s:%s' % (canonical_url(CONFIGS, ADMIN), port)
+
+    relation_set(requested_roles=roles, relation_id=relid,
+                 region=None, public_url=None,
+                 internal_url=None, admin_url=None, service=None,
+                 swift_service='swift', swift_region=region,
+                 swift_public_url=public_url,
+                 swift_internal_url=internal_url,
+                 swift_admin_url=admin_url,
+                 s3_service='s3', s3_region=region,
+                 s3_public_url=s3_public_url,
+                 s3_admin_url=s3_admin_url,
+                 s3_internal_url=s3_internal_url)
 
 
 @hooks.hook('identity-service-relation-changed')

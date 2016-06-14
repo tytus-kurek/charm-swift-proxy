@@ -201,7 +201,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                  'tenantId': u.not_null,
                  'id': u.not_null,
                  'email': u'juju@localhost'}
-        user4 = {'name': 'swift',
+        user4 = {'name': 's3_swift',
                  'enabled': True,
                  'tenantId': u.not_null,
                  'id': u.not_null,
@@ -223,7 +223,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                        'id': u.not_null}
 
         expected = {'image': [endpoint_id], 'object-store': [endpoint_id],
-                    'identity': [endpoint_id]}
+                    'identity': [endpoint_id], 's3': [endpoint_id]}
         actual = self.keystone_demo.service_catalog.get_endpoints()
 
         ret = u.validate_svc_catalog_endpoint_data(expected, actual)
@@ -254,13 +254,18 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         unit = self.swift_proxy_sentry
         relation = ['identity-service', 'keystone:identity-service']
         expected = {
-            'service': 'swift',
-            'region': 'RegionOne',
-            'public_url': u.valid_url,
-            'internal_url': u.valid_url,
+            'swift_service': 'swift',
+            'swift_region': 'RegionOne',
+            'swift_public_url': u.valid_url,
+            'swift_internal_url': u.valid_url,
+            'swift_admin_url': u.valid_url,
+            's3_service': 's3',
+            's3_region': 'RegionOne',
+            's3_public_url': u.valid_url,
+            's3_internal_url': u.valid_url,
+            's3_admin_url': u.valid_url,
             'private-address': u.valid_ip,
             'requested_roles': 'Member,Admin',
-            'admin_url': u.valid_url
         }
 
         ret = u.validate_relation_data(unit, relation, expected)
@@ -283,7 +288,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             'auth_protocol': 'http',
             'private-address': u.valid_ip,
             'auth_host': u.valid_ip,
-            'service_username': 'swift',
+            'service_username': 's3_swift',
             'service_tenant_id': u.not_null,
             'service_host': u.valid_ip
         }
@@ -463,10 +468,6 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                 'paste.filter_factory': 'keystonemiddleware.s3_token'
                                         ':filter_factory',
                 'auth_uri': '{}://{}:{}'.format(
-                    auth_protocol,
-                    auth_host,
-                    keystone_relation['service_port']),
-                'identity_uri': '{}://{}:{}'.format(
                     auth_protocol,
                     auth_host,
                     keystone_relation['auth_port']),

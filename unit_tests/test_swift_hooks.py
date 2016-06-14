@@ -101,13 +101,23 @@ class SwiftHooksTestCase(unittest.TestCase):
         swift_hooks.keystone_joined()
 
         _relation_set.assert_called_with(
-            service='swift',
-            region='RegionOne',
-            public_url='http://swift-proxy:1234/v1/AUTH_$(tenant_id)s',
-            internal_url='http://swift-proxy:1234/v1/AUTH_$(tenant_id)s',
-            admin_url='http://swift-proxy:1234',
+            admin_url=None,
+            internal_url=None,
+            public_url=None,
+            region=None,
+            relation_id=None,
             requested_roles='Operator,Monitor',
-            relation_id=None
+            s3_admin_url='http://swift-proxy:1234',
+            s3_internal_url='http://swift-proxy:1234',
+            s3_public_url='http://swift-proxy:1234',
+            s3_region='RegionOne',
+            s3_service='s3',
+            service=None,
+            swift_admin_url='http://swift-proxy:1234',
+            swift_internal_url='http://swift-proxy:1234/v1/AUTH_$(tenant_id)s',
+            swift_public_url='http://swift-proxy:1234/v1/AUTH_$(tenant_id)s',
+            swift_region='RegionOne',
+            swift_service='swift'
         )
 
     @patch.object(swift_hooks, 'config')
@@ -148,14 +158,24 @@ class SwiftHooksTestCase(unittest.TestCase):
         swift_hooks.keystone_joined()
 
         _relation_set.assert_called_with(
-            service='swift',
-            region='RegionOne',
-            public_url=('http://public.example.com:1234/'
-                        'v1/AUTH_$(tenant_id)s'),
-            internal_url='http://swift-proxy:1234/v1/AUTH_$(tenant_id)s',
-            admin_url='http://swift-proxy:1234',
+            admin_url=None,
+            internal_url=None,
+            public_url=None,
+            region=None,
+            relation_id=None,
             requested_roles='Operator,Monitor',
-            relation_id=None
+            s3_admin_url='http://swift-proxy:1234',
+            s3_internal_url='http://swift-proxy:1234',
+            s3_public_url='http://public.example.com:1234',
+            s3_region='RegionOne',
+            s3_service='s3',
+            service=None,
+            swift_admin_url='http://swift-proxy:1234',
+            swift_internal_url='http://swift-proxy:1234/v1/AUTH_$(tenant_id)s',
+            swift_public_url=('http://public.example.com' +
+                              ':1234/v1/AUTH_$(tenant_id)s'),
+            swift_region='RegionOne',
+            swift_service='swift'
         )
 
     @patch.object(swift_hooks.time, 'time')
