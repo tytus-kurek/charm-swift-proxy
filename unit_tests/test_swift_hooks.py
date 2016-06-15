@@ -169,3 +169,46 @@ class SwiftHooksTestCase(unittest.TestCase):
         calls = [call(rsync_allowed_hosts='10.0.0.1 10.0.0.2',
                       relation_id='storage:1', timestamp=1234)]
         mock_rel_set.assert_has_calls(calls)
+
+    @patch.object(swift_hooks, 'relation_set')
+    @patch.object(swift_hooks, 'update_dns_ha_resource_params')
+    @patch.object(swift_hooks, 'get_hacluster_config')
+    @patch.object(swift_hooks, 'config')
+    def test_ha_jrelation_oined_dns_ha(self, test_config, get_hacluster_config,
+                                       update_dns_ha_resource_params,
+                                       relation_set):
+        def _fake_update(resources, resource_params, relation_id=None):
+            resources.update({'res_swift_proxy_public_hostname':
+                              'ocf:maas:dns'})
+            resource_params.update({'res_swift_proxy_public_hostname':
+                                    'params fqdn="keystone.maas" '
+                                    'ip_address="10.0.0.1"'})
+
+        test_config.set('dns-ha', True)
+        get_hacluster_config.return_value = {
+            'vip': None,
+            'ha-bindiface': 'em0',
+            'ha-mcastport': '8080',
+            'os-admin-hostname': None,
+            'os-internal-hostname': None,
+            'os-public-hostname': 'keystone.maas',
+        }
+        args = {
+            'relation_id': None,
+            'corosync_bindiface': 'em0',
+            'corosync_mcastport': '8080',
+            'init_services': {'res_swift_haproxy': 'haproxy'},
+            'resources': {'res_swift_proxy_public_hostname': 'ocf:maas:dns',
+                          'res_swift_haproxy': 'lsb:haproxy'},
+            'resource_params': {
+                'res_swift_proxy_public_hostname':
+                    'params fqdn="keystone.maas" '
+                    'ip_address="10.0.0.1"',
+                'res_swift_haproxy': 'op monitor interval="5s"'},
+            'clones': {'cl_swift_haproxy': 'res_swift_haproxy'}
+        }
+        update_dns_ha_resource_params.side_effect = _fake_update
+
+        swift_hooks.ha_relation_joined()
+        self.assertTrue(update_dns_ha_resource_params.called)
+        relation_set.assert_called_with(**args)
