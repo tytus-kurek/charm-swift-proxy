@@ -95,11 +95,11 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
     def _initialize_tests(self):
         """Perform final initialization before tests get run."""
         # Access the sentries for inspecting service units
-        self.mysql_sentry = self.d.sentry.unit['mysql/0']
-        self.keystone_sentry = self.d.sentry.unit['keystone/0']
-        self.glance_sentry = self.d.sentry.unit['glance/0']
-        self.swift_proxy_sentry = self.d.sentry.unit['swift-proxy/0']
-        self.swift_storage_sentry = self.d.sentry.unit['swift-storage/0']
+        self.mysql_sentry = self.d.sentry['mysql'][0]
+        self.keystone_sentry = self.d.sentry['keystone'][0]
+        self.glance_sentry = self.d.sentry['glance'][0]
+        self.swift_proxy_sentry = self.d.sentry['swift-proxy'][0]
+        self.swift_storage_sentry = self.d.sentry['swift-storage'][0]
 
         u.log.debug('openstack release val: {}'.format(
             self._get_openstack_release()))
