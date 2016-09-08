@@ -18,6 +18,7 @@ import shutil
 import tempfile
 import uuid
 import unittest
+import subprocess
 
 with mock.patch('charmhelpers.core.hookenv.config'):
     import lib.swift_utils as swift_utils
@@ -421,3 +422,26 @@ class SwiftUtilsTestCase(unittest.TestCase):
             'test-config', required_interfaces,
             charm_func=swift_utils.customer_check_assess_status,
             services='s1', ports=None)
+
+    @mock.patch.object(swift_utils, 'leader_set')
+    @mock.patch.object(swift_utils, 'determine_api_port')
+    @mock.patch.object(swift_utils, 'is_leader')
+    @mock.patch.object(swift_utils, 'config')
+    @mock.patch.object(swift_utils, 'leader_get')
+    @mock.patch.object(subprocess, 'check_call')
+    def test_config_and_leader_get(self, check_call, leader_get, config,
+                                   is_leader, determine_api_port, leader_set):
+        """Ensure that we config_get, and then leader_get."""
+        config.side_effect = lambda key: {
+            'auth-type': 'swauth',
+            'swauth-admin-key': None,
+            'bind-port': 8080}[key]
+        determine_api_port.return_value = 8080
+        is_leader.return_value = True
+        leader_get.return_value = "Test"
+        swift_utils.try_initialize_swauth()
+        check_call.assert_called_with(['swauth-prep',
+                                       '-A',
+                                       'http://localhost:8080/auth',
+                                       '-K',
+                                       'Test'])

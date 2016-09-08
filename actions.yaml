@@ -1,3 +1,21 @@
+add-user:
+  description: |
+    Add a user to swauth.
+    This adds a given user / pass to swauth. Auth-type must be set to swauth.
+  params:
+    account:
+      type: string
+      description: account to add this user to
+    username:
+      type: string
+      description: username for the newly created user
+    password:
+      type: string
+      description: password for the newly created user
+  required: 
+    - account
+    - username
+    - password
 pause:
   description: |
     Pause swift-proxy services.
