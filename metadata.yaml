@@ -17,6 +17,11 @@ description: |
 tags:
   - openstack
   - cache-proxy
+series:
+  - xenial
+  - trusty
+  - precise
+  - yakkety
 extra-bindings:
   public:
   admin:
