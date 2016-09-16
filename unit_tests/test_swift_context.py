@@ -23,6 +23,78 @@ with mock.patch('charmhelpers.core.hookenv.config'):
     import lib.swift_context as swift_context
 
 
+class SwiftIdentityContextTest(unittest.TestCase):
+
+    @mock.patch('lib.swift_context.relation_get')
+    @mock.patch('lib.swift_context.related_units')
+    @mock.patch('lib.swift_context.relation_ids')
+    @mock.patch('lib.swift_context.IdentityServiceContext')
+    @mock.patch('lib.swift_context.determine_api_port')
+    @mock.patch('lib.swift_context.unit_get')
+    @mock.patch('lib.swift_context.get_host_ip')
+    @mock.patch('lib.swift_context.config')
+    def test_context_api_v2(self, mock_config, mock_get_host_ip,
+                            mock_unit_get, mock_determine_api_port,
+                            mock_IdentityServiceContext, mock_relation_ids,
+                            mock_related_units, mock_relation_get):
+        _relinfo = {
+            'auth_protocol': 'http',
+            'service_protocol': 'http',
+            'auth_host': 'kshost',
+            'service_host': 'kshost',
+            'auth_port': '5000',
+            'service_username': 'svcuser',
+            'service_password': 'svcpasswd',
+            'service_tenant': 'svctenant',
+            'service_port': 'svcport',
+            'admin_token': 'token',
+            'api_version': None,
+        }
+        mock_config.return_value = None
+        mock_relation_ids.return_value = ['rid1']
+        mock_related_units.return_value = ['ksunit/0']
+        mock_relation_get.side_effect = lambda x, y, z: _relinfo[x]
+        ctxt = swift_context.SwiftIdentityContext()
+        self.assertEqual(ctxt()['api_version'], '2')
+
+    @mock.patch('lib.swift_context.relation_get')
+    @mock.patch('lib.swift_context.related_units')
+    @mock.patch('lib.swift_context.relation_ids')
+    @mock.patch('lib.swift_context.IdentityServiceContext')
+    @mock.patch('lib.swift_context.determine_api_port')
+    @mock.patch('lib.swift_context.unit_get')
+    @mock.patch('lib.swift_context.get_host_ip')
+    @mock.patch('lib.swift_context.config')
+    def test_context_api_v3(self, mock_config, mock_get_host_ip,
+                            mock_unit_get, mock_determine_api_port,
+                            mock_IdentityServiceContext, mock_relation_ids,
+                            mock_related_units, mock_relation_get):
+        _relinfo = {
+            'auth_protocol': 'http',
+            'service_protocol': 'http',
+            'auth_host': 'kshost',
+            'service_host': 'kshost',
+            'auth_port': '5000',
+            'service_username': 'svcuser',
+            'service_password': 'svcpasswd',
+            'service_tenant': 'svctenant',
+            'service_port': 'svcport',
+            'admin_token': 'token',
+            'api_version': '3',
+            'admin_domain_id': 'admin_dom_id',
+            'service_tenant_id': 'svc_tenant_id',
+        }
+        self.maxDiff = None
+        mock_relation_ids.return_value = ['rid1']
+        mock_related_units.return_value = ['ksunit/0']
+        mock_relation_get.side_effect = lambda x, y, z: _relinfo[x]
+        mock_config.return_value = None
+        ctxt = swift_context.SwiftIdentityContext()
+        self.assertEqual(ctxt()['api_version'], '3')
+        self.assertEqual(ctxt()['admin_domain_id'], 'admin_dom_id')
+        self.assertEqual(ctxt()['service_tenant_id'], 'svc_tenant_id')
+
+
 class SwiftContextTestCase(unittest.TestCase):
 
     @mock.patch('lib.swift_context.config')

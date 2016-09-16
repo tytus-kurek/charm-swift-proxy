@@ -139,7 +139,7 @@ class SwiftIdentityContext(OSContextGenerator):
                 'auth_port': config('keystone-auth-port'),
                 'service_user': admin_user,
                 'service_password': admin_password,
-                'service_tenant': config('keystone-admin-tenant-name')
+                'service_tenant': config('keystone-admin-tenant-name'),
             }
             ctxt.update(ks_auth)
 
@@ -168,7 +168,14 @@ class SwiftIdentityContext(OSContextGenerator):
                                                  unit, relid),
                     'admin_token': relation_get('admin_token',
                                                 unit, relid),
+                    'api_version': relation_get('api_version',
+                                                unit, relid) or '2',
                 }
+                if ks_auth['api_version'] == '3':
+                    ks_auth['admin_domain_id'] = relation_get(
+                        'admin_domain_id', unit, relid)
+                    ks_auth['service_tenant_id'] = relation_get(
+                        'service_tenant_id', unit, relid)
                 if context_complete(ks_auth):
                     ctxt.update(ks_auth)
 
