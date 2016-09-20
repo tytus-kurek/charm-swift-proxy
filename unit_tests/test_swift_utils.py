@@ -392,13 +392,17 @@ class SwiftUtilsTestCase(unittest.TestCase):
                         'Not enough storage zones for minimum '
                         'replicas')
 
-    def test_assess_status(self):
+    @mock.patch.object(swift_utils, 'os_application_version_set')
+    def test_assess_status(self, os_application_version_set):
         with mock.patch.object(swift_utils, 'assess_status_func') as asf:
             callee = mock.MagicMock()
             asf.return_value = callee
             swift_utils.assess_status('test-config')
             asf.assert_called_once_with('test-config', None)
             callee.assert_called_once_with()
+            os_application_version_set.assert_called_with(
+                swift_utils.VERSION_PACKAGE
+            )
 
     @mock.patch.object(swift_utils, 'relation_ids')
     @mock.patch.object(swift_utils, 'services')

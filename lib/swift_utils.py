@@ -29,6 +29,7 @@ from charmhelpers.contrib.openstack.utils import (
     get_os_codename_install_source,
     configure_installation_source,
     make_assess_status_func,
+    os_application_version_set,
 )
 from charmhelpers.contrib.hahelpers.cluster import (
     is_elected_leader,
@@ -86,6 +87,8 @@ WWW_DIR = '/var/www/swift-rings'
 ALTERNATE_WWW_DIR = '/var/www/html/swift-rings'
 
 RING_SYNC_SEMAPHORE = threading.Semaphore()
+
+VERSION_PACKAGE = 'swift-proxy'
 
 
 def get_www_dir():
@@ -1147,6 +1150,7 @@ def assess_status(configs, check_services=None):
     @returns None - this function is executed for its side-effect
     """
     assess_status_func(configs, check_services)()
+    os_application_version_set(VERSION_PACKAGE)
 
 
 def assess_status_func(configs, check_services=None):
