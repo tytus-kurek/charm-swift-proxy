@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import time
 import amulet
 import swiftclient
 
@@ -40,6 +39,12 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         self._add_relations()
         self._configure_services()
         self._deploy()
+
+        u.log.info('Waiting on extended status checks...')
+        exclude_services = []
+        self._auto_wait_for_status(exclude_services=exclude_services)
+
+        self.d.sentry.wait()
         self._initialize_tests()
 
     def _add_services(self):
@@ -50,21 +55,23 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
            compatible with the local charm (e.g. stable or next).
            """
         this_service = {'name': 'swift-proxy'}
-        other_services = [{'name': 'mysql'},
-                          {'name': 'keystone'},
-                          {'name': 'glance'},
-                          {'name': 'swift-storage'}]
+        other_services = [
+            {'name': 'percona-cluster', 'constraints': {'mem': '3072M'}},
+            {'name': 'keystone'},
+            {'name': 'glance'},
+            {'name': 'swift-storage'}
+        ]
         super(SwiftProxyBasicDeployment, self)._add_services(this_service,
                                                              other_services)
 
     def _add_relations(self):
         """Add all of the relations for the services."""
         relations = {
-            'keystone:shared-db': 'mysql:shared-db',
+            'keystone:shared-db': 'percona-cluster:shared-db',
             'swift-proxy:identity-service': 'keystone:identity-service',
             'swift-storage:swift-storage': 'swift-proxy:swift-storage',
             'glance:identity-service': 'keystone:identity-service',
-            'glance:shared-db': 'mysql:shared-db',
+            'glance:shared-db': 'percona-cluster:shared-db',
             'glance:object-store': 'swift-proxy:object-store'
         }
         super(SwiftProxyBasicDeployment, self)._add_relations(relations)
@@ -85,17 +92,24 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             'block-device': 'vdb',
             'overwrite': 'true'
         }
+        pxc_config = {
+            'dataset-size': '25%',
+            'max-connections': 1000,
+            'root-password': 'ChangeMe123',
+            'sst-password': 'ChangeMe123',
+        }
         configs = {
             'keystone': keystone_config,
             'swift-proxy': swift_proxy_config,
-            'swift-storage': swift_storage_config
+            'swift-storage': swift_storage_config,
+            'percona-cluster': pxc_config,
         }
         super(SwiftProxyBasicDeployment, self)._configure_services(configs)
 
     def _initialize_tests(self):
         """Perform final initialization before tests get run."""
         # Access the sentries for inspecting service units
-        self.mysql_sentry = self.d.sentry['mysql'][0]
+        self.pxc_sentry = self.d.sentry['percona-cluster'][0]
         self.keystone_sentry = self.d.sentry['keystone'][0]
         self.glance_sentry = self.d.sentry['glance'][0]
         self.swift_proxy_sentry = self.d.sentry['swift-proxy'][0]
@@ -105,9 +119,6 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             self._get_openstack_release()))
         u.log.debug('openstack release str: {}'.format(
             self._get_openstack_release_string()))
-
-        # Let things settle a bit before moving forward
-        time.sleep(30)
 
         # Authenticate admin with keystone
         self.keystone = u.authenticate_keystone_admin(self.keystone_sentry,
@@ -168,7 +179,6 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                                   'swift-object-updater',
                                   'swift-container-sync']
         service_names = {
-            self.mysql_sentry: ['mysql'],
             self.keystone_sentry: ['keystone'],
             self.glance_sentry: ['glance-registry',
                                  'glance-api'],

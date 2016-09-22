@@ -14,12 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Amulet tests on a basic swift-proxy deployment on precise-icehouse."""
+"""Amulet tests on a basic swift-proxy deployment on xenial-newton."""
 
 from basic_deployment import SwiftProxyBasicDeployment
 
 if __name__ == '__main__':
-    deployment = SwiftProxyBasicDeployment(series='precise',
-                                        openstack='cloud:precise-icehouse',
-                                        source='cloud:precise-updates/icehouse')
+    deployment = SwiftProxyBasicDeployment(series='xenial',
+                                        openstack='cloud:xenial-newton',
+                                        source='cloud:xenial-updates/newton')
     deployment.run_tests()
