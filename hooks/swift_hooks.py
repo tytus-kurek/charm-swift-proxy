@@ -699,6 +699,13 @@ def update_nrpe_config():
     nrpe.copy_nrpe_checks()
     nrpe.add_init_service_checks(nrpe_setup, services(), current_unit)
     nrpe.add_haproxy_checks(nrpe_setup, current_unit)
+    nrpe_setup.add_check(
+        shortname="swift-proxy-healthcheck",
+        description="Check Swift Proxy Healthcheck",
+        check_cmd="/usr/lib/nagios/plugins/check_http \
+                  -I localhost -u /healthcheck -p 8070 \
+                  -e \"OK\""
+    )
     nrpe_setup.write()
 
 
