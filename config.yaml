@@ -110,7 +110,11 @@ options:
   auth-type:
     default: tempauth
     type: string
-    description: Auth method to use, tempauth or keystone
+    description: Auth method to use, tempauth, swauth or keystone
+  swauth-admin-key:
+    default: 
+    type: string
+    description: The secret key to use to authenticate as an swauth admin
   delay-auth-decision:
     default: true
     type: boolean

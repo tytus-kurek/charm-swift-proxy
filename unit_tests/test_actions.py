@@ -15,12 +15,13 @@
 import argparse
 import sys
 import tempfile
+import subprocess
 
 import mock
 import yaml
 import unittest
 
-from mock import patch, MagicMock
+from mock import patch, MagicMock, call
 
 # python-apt is not installed as part of test-requirements but is imported by
 # some charmhelpers modules so create a fake import.
@@ -32,6 +33,7 @@ with patch('charmhelpers.contrib.hardening.harden.harden') as mock_dec, \
     mock_dec.side_effect = (lambda *dargs, **dkwargs: lambda f:
                             lambda *args, **kwargs: f(*args, **kwargs))
     import actions.actions
+    import actions.add_user
 
 
 class CharmTestCase(unittest.TestCase):
@@ -202,3 +204,46 @@ class MainTestCase(CharmTestCase):
         with mock.patch.dict(actions.actions.ACTIONS, {"foo": dummy_action}):
             actions.actions.main([])
         self.assertEqual(dummy_calls, ["uh oh"])
+
+
+class AddUserTestCase(CharmTestCase):
+
+    def setUp(self):
+        super(AddUserTestCase, self).setUp(
+            actions.add_user, ["action_get", "action_set",
+                               "action_fail", "check_call",
+                               "try_initialize_swauth", "config",
+                               "determine_api_port", "leader_get"])
+
+    def test_success(self):
+        """Ensure that the action_set is called on succees."""
+        self.config.return_value = "swauth"
+        self.action_get.return_value = "test"
+        self.determine_api_port.return_value = 8070
+        actions.add_user.add_user()
+        self.leader_get.assert_called_with("swauth-admin-key")
+        calls = [call("account"), call("username"), call("password")]
+        self.action_get.assert_has_calls(calls)
+        self.action_set.assert_called_once_with({
+            'add-user.result': 'Success',
+            'add-user.message': "Successfully added the user test",
+        })
+
+    def test_failure(self):
+        """Ensure that action_fail is called on failure."""
+        self.config.return_value = "swauth"
+        self.action_get.return_value = "test"
+        self.determine_api_port.return_value = 8070
+        self.CalledProcessError = ValueError
+
+        self.check_call.side_effect = subprocess.CalledProcessError(0,
+                                                                    "hi",
+                                                                    "no")
+        actions.add_user.add_user()
+        self.leader_get.assert_called_with("swauth-admin-key")
+        calls = [call("account"), call("username"), call("password")]
+        self.action_get.assert_has_calls(calls)
+        self.action_set.assert_not_called()
+
+        self.action_fail.assert_called_once_with(
+            'Adding user test failed with: ""')

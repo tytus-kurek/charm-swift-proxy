@@ -52,6 +52,7 @@ from lib.swift_utils import (
     is_most_recent_timestamp,
     timestamps_available,
     assess_status,
+    try_initialize_swauth,
 )
 
 import charmhelpers.contrib.openstack.utils as openstack
@@ -62,11 +63,9 @@ from charmhelpers.contrib.openstack.ha.utils import (
 
 from charmhelpers.contrib.hahelpers.cluster import (
     get_hacluster_config,
-)
-
-from charmhelpers.contrib.hahelpers.cluster import (
     is_elected_leader,
 )
+
 from charmhelpers.core.hookenv import (
     config,
     local_unit,
@@ -183,6 +182,7 @@ def config_changed():
 
     for r_id in relation_ids('object-store'):
         object_store_joined(relation_id=r_id)
+    try_initialize_swauth()
 
 
 @hooks.hook('identity-service-relation-joined')
@@ -233,6 +233,7 @@ def storage_joined():
         # possibility of storage nodes getting out-of-date rings by deprecating
         # any existing ones from the www dir.
         mark_www_rings_deleted()
+    try_initialize_swauth()
 
 
 def get_host_ip(rid=None, unit=None):

@@ -34,19 +34,23 @@ from charmhelpers.contrib.openstack.utils import (
 from charmhelpers.contrib.hahelpers.cluster import (
     is_elected_leader,
     peer_units,
+    determine_api_port,
 )
 from charmhelpers.core.hookenv import (
     log,
     DEBUG,
     INFO,
     WARNING,
-    config,
     local_unit,
     relation_get,
     unit_get,
     relation_set,
     relation_ids,
     related_units,
+    config,
+    is_leader,
+    leader_set,
+    leader_get,
 )
 from charmhelpers.fetch import (
     apt_update,
@@ -116,7 +120,7 @@ BASE_PACKAGES = [
     'python-keystone',
 ]
 # > Folsom specific packages
-FOLSOM_PACKAGES = BASE_PACKAGES + ['swift-plugin-s3']
+FOLSOM_PACKAGES = BASE_PACKAGES + ['swift-plugin-s3', 'swauth']
 
 SWIFT_HA_RES = 'grp_swift_vips'
 TEMPLATES = 'templates/'
@@ -302,6 +306,29 @@ class SwiftProxyClusterRPC(object):
         rq['trigger'] = str(uuid.uuid4())
         rq[self.KEY_REQUEST_RESYNC] = token
         return rq
+
+
+def try_initialize_swauth():
+    if is_leader() and config('auth-type') == 'swauth':
+        if leader_get('swauth-init') is not True:
+            try:
+                admin_key = config('swauth-admin-key')
+                if admin_key == '' or admin_key is None:
+                    admin_key = leader_get('swauth-admin-key')
+                    if admin_key is None:
+                        admin_key = uuid.uuid4()
+                leader_set({'swauth-admin-key': admin_key})
+
+                bind_port = config('bind-port')
+                bind_port = determine_api_port(bind_port, singlenode_mode=True)
+                subprocess.check_call([
+                    'swauth-prep',
+                    '-A',
+                    'http://localhost:{}/auth'.format(bind_port),
+                    '-K', admin_key])
+                leader_set({'swauth-init': True})
+            except subprocess.CalledProcessError:
+                log("had a problem initializing swauth!")
 
 
 def get_first_available_value(responses, key, default=None):

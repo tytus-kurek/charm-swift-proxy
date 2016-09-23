@@ -25,6 +25,7 @@ with mock.patch('charmhelpers.core.hookenv.config'):
 
 class SwiftIdentityContextTest(unittest.TestCase):
 
+    @mock.patch('lib.swift_context.leader_get')
     @mock.patch('lib.swift_context.relation_get')
     @mock.patch('lib.swift_context.related_units')
     @mock.patch('lib.swift_context.relation_ids')
@@ -36,7 +37,8 @@ class SwiftIdentityContextTest(unittest.TestCase):
     def test_context_api_v2(self, mock_config, mock_get_host_ip,
                             mock_unit_get, mock_determine_api_port,
                             mock_IdentityServiceContext, mock_relation_ids,
-                            mock_related_units, mock_relation_get):
+                            mock_related_units, mock_relation_get,
+                            mock_leader_get):
         _relinfo = {
             'auth_protocol': 'http',
             'service_protocol': 'http',
@@ -57,6 +59,7 @@ class SwiftIdentityContextTest(unittest.TestCase):
         ctxt = swift_context.SwiftIdentityContext()
         self.assertEqual(ctxt()['api_version'], '2')
 
+    @mock.patch('lib.swift_context.leader_get')
     @mock.patch('lib.swift_context.relation_get')
     @mock.patch('lib.swift_context.related_units')
     @mock.patch('lib.swift_context.relation_ids')
@@ -68,7 +71,8 @@ class SwiftIdentityContextTest(unittest.TestCase):
     def test_context_api_v3(self, mock_config, mock_get_host_ip,
                             mock_unit_get, mock_determine_api_port,
                             mock_IdentityServiceContext, mock_relation_ids,
-                            mock_related_units, mock_relation_get):
+                            mock_related_units, mock_relation_get,
+                            mock_leader_get):
         _relinfo = {
             'auth_protocol': 'http',
             'service_protocol': 'http',

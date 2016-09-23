@@ -9,6 +9,7 @@ from charmhelpers.core.hookenv import (
     relation_get,
     unit_get,
     service_name,
+    leader_get,
 )
 from charmhelpers.contrib.openstack.context import (
     OSContextGenerator,
@@ -107,8 +108,12 @@ class SwiftIdentityContext(OSContextGenerator):
             'delay_auth_decision': config('delay-auth-decision'),
             'node_timeout': config('node-timeout'),
             'recoverable_node_timeout': config('recoverable-node-timeout'),
-            'log_headers': config('log-headers')
+            'log_headers': config('log-headers'),
         }
+
+        admin_key = leader_get('swauth-admin-key')
+        if admin_key is not None:
+            ctxt['swauth_admin_key'] = admin_key
 
         if config('debug'):
             ctxt['log_level'] = 'DEBUG'
@@ -126,6 +131,8 @@ class SwiftIdentityContext(OSContextGenerator):
         ctxt['ssl'] = False
 
         auth_type = config('auth-type')
+        ctxt['auth_type'] = auth_type
+
         auth_host = config('keystone-auth-host')
         admin_user = config('keystone-admin-user')
         admin_password = config('keystone-admin-user')
