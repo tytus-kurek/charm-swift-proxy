@@ -14,10 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Amulet tests on a basic swift-proxy deployment on xenial-mitaka."""
+"""Amulet tests on a basic swift-proxy deployment on zesty-ocata."""
 
 from basic_deployment import SwiftProxyBasicDeployment
 
 if __name__ == '__main__':
-    deployment = SwiftProxyBasicDeployment(series='xenial')
+    deployment = SwiftProxyBasicDeployment(series='zesty')
     deployment.run_tests()
