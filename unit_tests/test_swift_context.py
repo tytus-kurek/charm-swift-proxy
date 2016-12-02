@@ -81,6 +81,7 @@ class SwiftIdentityContextTest(unittest.TestCase):
             'auth_port': '5000',
             'service_username': 'svcuser',
             'service_password': 'svcpasswd',
+            'service_domain': 'service_domain',
             'service_tenant': 'svctenant',
             'service_port': 'svcport',
             'admin_token': 'token',
@@ -97,6 +98,8 @@ class SwiftIdentityContextTest(unittest.TestCase):
         self.assertEqual(ctxt()['api_version'], '3')
         self.assertEqual(ctxt()['admin_domain_id'], 'admin_dom_id')
         self.assertEqual(ctxt()['service_tenant_id'], 'svc_tenant_id')
+        self.assertEqual(ctxt()['admin_domain_name'], 'service_domain')
+        self.assertEqual(ctxt()['admin_tenant_name'], 'svctenant')
 
 
 class SwiftContextTestCase(unittest.TestCase):

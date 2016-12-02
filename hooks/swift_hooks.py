@@ -194,7 +194,6 @@ def keystone_joined(relid=None):
     public_url = ('%s:%s/v1/AUTH_$(tenant_id)s' %
                   (canonical_url(CONFIGS, PUBLIC), port))
     region = config('region')
-    roles = config('operator-roles')
 
     s3_public_url = ('%s:%s' %
                      (canonical_url(CONFIGS, PUBLIC), port))
@@ -202,7 +201,7 @@ def keystone_joined(relid=None):
                        (canonical_url(CONFIGS, INTERNAL), port))
     s3_admin_url = '%s:%s' % (canonical_url(CONFIGS, ADMIN), port)
 
-    relation_set(requested_roles=roles, relation_id=relid,
+    relation_set(relation_id=relid,
                  region=None, public_url=None,
                  internal_url=None, admin_url=None, service=None,
                  swift_service='swift', swift_region=region,

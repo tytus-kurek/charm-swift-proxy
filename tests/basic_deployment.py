@@ -14,6 +14,7 @@
 
 import amulet
 import swiftclient
+import time
 
 from charmhelpers.contrib.openstack.amulet.deployment import (
     OpenStackAmuletDeployment
@@ -275,7 +276,6 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             's3_internal_url': u.valid_url,
             's3_admin_url': u.valid_url,
             'private-address': u.valid_ip,
-            'requested_roles': 'Member,Admin',
         }
 
         ret = u.validate_relation_data(unit, relation, expected)
@@ -386,9 +386,10 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             message = "swift config error: {}".format(ret)
             amulet.raise_status(amulet.FAIL, msg=message)
 
-    def test_302_proxy_server_config(self):
+    def test_302_proxy_server_config(self, auth_api_version='2.0'):
         """Verify the data in the proxy-server config file."""
-        u.log.debug('Checking swift proxy-server config...')
+        u.log.debug("Checking swift proxy-server config auth_api_version={}..."
+                    "".format(auth_api_version))
         unit = self.swift_proxy_sentry
         conf = '/etc/swift/proxy-server.conf'
         keystone_relation = self.keystone_sentry.relation(
@@ -453,26 +454,45 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                     auth_protocol,
                     auth_host,
                     keystone_relation['service_port']),
-                'admin_tenant_name': keystone_relation['service_tenant'],
-                'admin_user': keystone_relation['service_username'],
-                'admin_password': keystone_relation['service_password'],
                 'delay_auth_decision': 'true',
                 'signing_dir': '/var/cache/swift',
                 'cache': 'swift.cache'
             },
             'filter:swift3': {'use': 'egg:swift3#swift3'}
         }
+        if auth_api_version == '2.0':
+            expected['filter:authtoken'].update({
+                'admin_tenant_name': keystone_relation['service_tenant'],
+                'admin_user': keystone_relation['service_username'],
+                'admin_password': keystone_relation['service_password'],
+            })
 
         if self._get_openstack_release() >= self.trusty_kilo:
             # Kilo and later
             expected['filter:authtoken'].update({
                 'paste.filter_factory': 'keystonemiddleware.auth_token:'
                                         'filter_factory',
-                'identity_uri': '{}://{}:{}'.format(
-                    auth_protocol,
-                    auth_host,
-                    keystone_relation['auth_port']),
             })
+            if auth_api_version == '3':
+                expected['filter:authtoken'].update({
+                    'auth_url': '{}://{}:{}'.format(
+                        auth_protocol,
+                        auth_host,
+                        keystone_relation['auth_port']),
+                    'auth_plugin': 'password',
+                    'username': keystone_relation['service_username'],
+                    'password': keystone_relation['service_password'],
+                    'project_domain_name': keystone_relation['service_domain'],
+                    'user_domain_name': keystone_relation['service_domain'],
+                    'project_name': keystone_relation['service_tenant'],
+                })
+            else:
+                expected['filter:authtoken'].update({
+                    'identity_uri': '{}://{}:{}'.format(
+                        auth_protocol,
+                        auth_host,
+                        keystone_relation['auth_port']),
+                })
             expected['filter:s3token'] = {
                 # No section commonality with J and earlier
                 'paste.filter_factory': 'keystonemiddleware.s3_token'
@@ -552,6 +572,58 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         # Cleanup
         u.delete_resource(self.glance.images, img_id, msg="glance image")
         u.log.info('OK')
+
+    def _set_auth_api_version(self, api_version, retry_count=5):
+        """Change Keystone preferred-api-version, wait for: propagation to
+           relation data, update of service configuration file and restart of
+           services on swift-proxy unit."""
+        configs = {'keystone': {'preferred-api-version': api_version}}
+        super(SwiftProxyBasicDeployment, self)._configure_services(configs)
+        mtime = u.get_sentry_time(self.swift_proxy_sentry)
+        for i in range(retry_count, -1, -1):
+            ks_gl_rel = self.keystone_sentry.relation(
+                'identity-service', 'glance:identity-service')
+            ks_sw_rel = self.keystone_sentry.relation(
+                'identity-service', 'swift-proxy:identity-service')
+            if not (ks_gl_rel['api_version'] == api_version and
+                    ks_sw_rel['api_version'] == api_version):
+                u.log.info("change of api_version not propagated yet "
+                           "retries left: '%d' "
+                           "glance:identity-service api_version: '%s' "
+                           "swift-proxy:identity-service api_version: '%s' "
+                           % (i,
+                              ks_gl_rel['api_version'],
+                              ks_sw_rel['api_version']))
+                u.log.info("sleeping %d seconds..." % i)
+                time.sleep(i)
+            elif not u.validate_service_config_changed(
+                    self.swift_proxy_sentry,
+                    mtime,
+                    'swift-proxy-server',
+                    '/etc/swift/proxy-server.conf',
+                    sleep_time=i):
+                msg = "swift-proxy-server didn't restart after change of "\
+                      "api_version"
+                amulet.raise_status(amulet.FAIL, msg=msg)
+            else:
+                return True
+        return False
+
+    def test_keystone_v3(self):
+        """Verify that the service is configured and operates correctly when
+           using Keystone v3 auth."""
+        os_release = self._get_openstack_release_string()
+        if os_release < 'kilo':
+            u.log.info('Skipping test, {} < kilo'.format(os_release))
+            return
+        u.log.info('Checking that service is configured and operate correctly '
+                   'when using Keystine v3 auth...')
+        if not self._set_auth_api_version('3'):
+            msg = "Unable to set auth_api_version to '3'"
+            amulet.raise_status(amulet.FAIL, msg=msg)
+            return
+        self.test_302_proxy_server_config(auth_api_version='3')
+        self.test_400_swift_backed_image_create()
 
     def test_900_restart_on_config_change(self):
         """Verify that the specified services are restarted when the config

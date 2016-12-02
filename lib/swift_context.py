@@ -14,7 +14,6 @@ from charmhelpers.core.hookenv import (
 from charmhelpers.contrib.openstack.context import (
     OSContextGenerator,
     ApacheSSLContext as SSLContext,
-    context_complete,
     IdentityServiceContext,
 )
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -183,8 +182,11 @@ class SwiftIdentityContext(OSContextGenerator):
                         'admin_domain_id', unit, relid)
                     ks_auth['service_tenant_id'] = relation_get(
                         'service_tenant_id', unit, relid)
-                if context_complete(ks_auth):
-                    ctxt.update(ks_auth)
+                    ks_auth['admin_domain_name'] = relation_get(
+                        'service_domain', unit, relid)
+                    ks_auth['admin_tenant_name'] = relation_get(
+                        'service_tenant', unit, relid)
+                ctxt.update(ks_auth)
 
         if config('prefer-ipv6'):
             for key in ['keystone_host', 'service_host']:
