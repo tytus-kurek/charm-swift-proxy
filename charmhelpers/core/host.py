@@ -306,15 +306,17 @@ def add_user_to_group(username, group):
     subprocess.check_call(cmd)
 
 
-def rsync(from_path, to_path, flags='-r', options=None):
+def rsync(from_path, to_path, flags='-r', options=None, timeout=None):
     """Replicate the contents of a path"""
     options = options or ['--delete', '--executability']
     cmd = ['/usr/bin/rsync', flags]
+    if timeout:
+        cmd = ['timeout', str(timeout)] + cmd
     cmd.extend(options)
     cmd.append(from_path)
     cmd.append(to_path)
     log(" ".join(cmd))
-    return subprocess.check_output(cmd).decode('UTF-8').strip()
+    return subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode('UTF-8').strip()
 
 
 def symlink(source, destination):
@@ -684,7 +686,7 @@ def chownr(path, owner, group, follow_links=True, chowntopdir=False):
     :param str path: The string path to start changing ownership.
     :param str owner: The owner string to use when looking up the uid.
     :param str group: The group string to use when looking up the gid.
-    :param bool follow_links: Also Chown links if True
+    :param bool follow_links: Also follow and chown links if True
     :param bool chowntopdir: Also chown path itself if True
     """
     uid = pwd.getpwnam(owner).pw_uid
@@ -698,7 +700,7 @@ def chownr(path, owner, group, follow_links=True, chowntopdir=False):
         broken_symlink = os.path.lexists(path) and not os.path.exists(path)
         if not broken_symlink:
             chown(path, uid, gid)
-    for root, dirs, files in os.walk(path):
+    for root, dirs, files in os.walk(path, followlinks=follow_links):
         for name in dirs + files:
             full = os.path.join(root, name)
             broken_symlink = os.path.lexists(full) and not os.path.exists(full)
