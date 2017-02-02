@@ -861,7 +861,7 @@ def sync_builders_and_rings_if_changed(f):
 
 
 @sync_builders_and_rings_if_changed
-def update_rings(nodes=[], min_part_hours=None):
+def update_rings(nodes=[], min_part_hours=None, rebalance=True):
     """Update builder with node settings and balance rings if necessary.
 
     Also update min_part_hours if provided.
@@ -899,7 +899,7 @@ def update_rings(nodes=[], min_part_hours=None):
                 add_to_ring(ring, node)
                 balance_required = True
 
-    if balance_required:
+    if rebalance and balance_required:
         balance_rings()
 
 

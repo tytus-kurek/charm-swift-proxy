@@ -171,7 +171,8 @@ def config_changed():
         status_set('maintenance', 'Running openstack upgrade')
 
     status_set('maintenance', 'Updating and (maybe) balancing rings')
-    update_rings(min_part_hours=config('min-hours'))
+    update_rings(min_part_hours=config('min-hours'),
+                 rebalance=not config('disable-ring-balance'))
 
     if not config('disable-ring-balance') and is_elected_leader(SWIFT_HA_RES):
         # Try ring balance. If rings are balanced, no sync will occur.
@@ -324,7 +325,11 @@ def storage_changed():
             node['device'] = dev
             nodes.append(node)
 
-    update_rings(nodes)
+    # NOTE(jamespage): ensure that disable-ring-balance is observed
+    #                  whilst new storage is added - rebalance will
+    #                  happen when configuration is toggled later
+    update_rings(nodes, rebalance=not config('disable-ring-balance'))
+
     if not openstack.is_unit_paused_set():
         # Restart proxy here in case no config changes made (so
         # restart_on_change() ineffective).
