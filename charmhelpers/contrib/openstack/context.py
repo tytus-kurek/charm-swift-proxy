@@ -395,16 +395,20 @@ class AMQPContext(OSContextGenerator):
         for rid in relation_ids(self.rel_name):
             ha_vip_only = False
             self.related = True
+            transport_hosts = None
+            rabbitmq_port = '5672'
             for unit in related_units(rid):
                 if relation_get('clustered', rid=rid, unit=unit):
                     ctxt['clustered'] = True
                     vip = relation_get('vip', rid=rid, unit=unit)
                     vip = format_ipv6_addr(vip) or vip
                     ctxt['rabbitmq_host'] = vip
+                    transport_hosts = [vip]
                 else:
                     host = relation_get('private-address', rid=rid, unit=unit)
                     host = format_ipv6_addr(host) or host
                     ctxt['rabbitmq_host'] = host
+                    transport_hosts = [host]
 
                 ctxt.update({
                     'rabbitmq_user': username,
@@ -416,6 +420,7 @@ class AMQPContext(OSContextGenerator):
                 ssl_port = relation_get('ssl_port', rid=rid, unit=unit)
                 if ssl_port:
                     ctxt['rabbit_ssl_port'] = ssl_port
+                    rabbitmq_port = ssl_port
 
                 ssl_ca = relation_get('ssl_ca', rid=rid, unit=unit)
                 if ssl_ca:
@@ -453,6 +458,20 @@ class AMQPContext(OSContextGenerator):
                     rabbitmq_hosts.append(host)
 
                 ctxt['rabbitmq_hosts'] = ','.join(sorted(rabbitmq_hosts))
+                transport_hosts = rabbitmq_hosts
+
+            if transport_hosts:
+                transport_url_hosts = ''
+                for host in transport_hosts:
+                    if transport_url_hosts:
+                        format_string = ",{}:{}@{}:{}"
+                    else:
+                        format_string = "{}:{}@{}:{}"
+                    transport_url_hosts += format_string.format(
+                        ctxt['rabbitmq_user'], ctxt['rabbitmq_password'],
+                        host, rabbitmq_port)
+                ctxt['transport_url'] = "rabbit://{}/{}".format(
+                    transport_url_hosts, vhost)
 
         oslo_messaging_flags = conf.get('oslo-messaging-flags', None)
         if oslo_messaging_flags:
@@ -484,13 +503,16 @@ class CephContext(OSContextGenerator):
                     ctxt['auth'] = relation_get('auth', rid=rid, unit=unit)
                 if not ctxt.get('key'):
                     ctxt['key'] = relation_get('key', rid=rid, unit=unit)
-                ceph_pub_addr = relation_get('ceph-public-address', rid=rid,
+
+                ceph_addrs = relation_get('ceph-public-address', rid=rid,
+                                          unit=unit)
+                if ceph_addrs:
+                    for addr in ceph_addrs.split(' '):
+                        mon_hosts.append(format_ipv6_addr(addr) or addr)
+                else:
+                    priv_addr = relation_get('private-address', rid=rid,
                                              unit=unit)
-                unit_priv_addr = relation_get('private-address', rid=rid,
-                                              unit=unit)
-                ceph_addr = ceph_pub_addr or unit_priv_addr
-                ceph_addr = format_ipv6_addr(ceph_addr) or ceph_addr
-                mon_hosts.append(ceph_addr)
+                    mon_hosts.append(format_ipv6_addr(priv_addr) or priv_addr)
 
         ctxt['mon_hosts'] = ' '.join(sorted(mon_hosts))
 

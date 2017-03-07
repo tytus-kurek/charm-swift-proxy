@@ -19,6 +19,7 @@ tags:
   - cache-proxy
 series:
   - xenial
+  - zesty
   - trusty
   - yakkety
 extra-bindings:
