@@ -8,7 +8,8 @@ those are also managed by Juju.  For Swift to function, you'll also need to
 deploy additional swift-storage nodes using the cs:precise/swift-storage
 charm.
 
-For more information about Swift and its architecture, visit the [official project website](http://swift.openstack.org)
+For more information about Swift and its architecture, visit the
+[official project website](https://docs.openstack.org/developer/swift)
 
 This charm was developed to support deploying multiple version of Swift on
 Ubuntu Precise 12.04, as they relate to the release series of OpenStack.  That
