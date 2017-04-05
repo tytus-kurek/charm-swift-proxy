@@ -1,6 +1,13 @@
 branch: lp:charm-helpers
 destination: tests/charmhelpers
 include:
+    - fetch
+    - core
     - contrib.amulet
     - contrib.openstack.amulet
-    - core
+    - contrib.openstack.utils
+    - contrib.openstack.exceptions
+    - contrib.network.ip
+    - contrib.storage|inc=*
+    - contrib.python|inc=*
+    - osplatform

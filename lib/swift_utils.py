@@ -30,6 +30,7 @@ from charmhelpers.contrib.openstack.utils import (
     configure_installation_source,
     make_assess_status_func,
     os_application_version_set,
+    CompareOpenStackReleases,
 )
 from charmhelpers.contrib.hahelpers.cluster import (
     is_elected_leader,
@@ -60,6 +61,7 @@ from charmhelpers.fetch import (
 )
 from charmhelpers.core.host import (
     lsb_release,
+    CompareHostReleases,
 )
 from charmhelpers.contrib.network.ip import (
     format_ipv6_addr,
@@ -375,8 +377,7 @@ def register_configs():
     # if called without anything installed (eg during install hook)
     # just default to earliest supported release. configs dont get touched
     # till post-install, anyway.
-    release = get_os_codename_package('swift-proxy', fatal=False) \
-        or 'essex'
+    release = get_os_codename_package('swift-proxy', fatal=False) or 'essex'
     configs = templating.OSConfigRenderer(templates_dir=TEMPLATES,
                                           openstack_release=release)
 
@@ -663,14 +664,15 @@ def setup_ipv6():
     in an environment that supports ipv6.
     """
     ubuntu_rel = lsb_release()['DISTRIB_CODENAME'].lower()
-    if ubuntu_rel < "trusty":
+    if CompareHostReleases(ubuntu_rel) < "trusty":
         msg = ("IPv6 is not supported in the charms for Ubuntu versions less "
                "than Trusty 14.04")
         raise SwiftProxyCharmException(msg)
 
     # Need haproxy >= 1.5.3 for ipv6 so for Trusty if we are <= Kilo we need to
     # use trusty-backports otherwise we can use the UCA.
-    if ubuntu_rel == 'trusty' and os_release('swift-proxy') < 'liberty':
+    if (ubuntu_rel == 'trusty' and
+            CompareOpenStackReleases(os_release('swift-proxy')) < 'liberty'):
         add_source('deb http://archive.ubuntu.com/ubuntu trusty-backports '
                    'main')
         apt_update()
