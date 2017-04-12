@@ -202,6 +202,37 @@ class SwiftHooksTestCase(unittest.TestCase):
                       relation_id='storage:1', timestamp=1234)]
         mock_rel_set.assert_has_calls(calls)
 
+    @patch.object(swift_hooks, 'unit_get', lambda key: '10.0.0.100')
+    @patch.object(swift_hooks, 'relation_set')
+    @patch.object(swift_hooks, 'config')
+    @patch.object(swift_hooks, 'get_address_in_network')
+    def test_cluster_joined(self, mock_get_addr, mock_config,
+                            mock_relation_set):
+        addrs = {'10.0.0.0/24': '10.0.0.1',
+                 '10.0.1.0/24': '10.0.1.1',
+                 '10.0.2.0/24': '10.0.2.1'}
+
+        def fake_get_address_in_network(network):
+            return addrs.get(network)
+
+        config = {'os-public-network': '10.0.0.0/24',
+                  'os-admin-network': '10.0.1.0/24',
+                  'os-internal-network': '10.0.2.0/24'}
+
+        def fake_config(key):
+            return config.get(key)
+
+        mock_get_addr.side_effect = fake_get_address_in_network
+        mock_config.side_effect = fake_config
+
+        swift_hooks.cluster_joined()
+        mock_relation_set.assert_has_calls(
+            [call(relation_id=None,
+                  relation_settings={'private-address': '10.0.0.100',
+                                     'admin-address': '10.0.1.1',
+                                     'internal-address': '10.0.2.1',
+                                     'public-address': '10.0.0.1'})])
+
     @patch.object(swift_hooks, 'relation_set')
     @patch.object(swift_hooks, 'update_dns_ha_resource_params')
     @patch.object(swift_hooks, 'get_hacluster_config')

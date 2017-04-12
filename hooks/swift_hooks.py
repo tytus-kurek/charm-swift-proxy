@@ -181,6 +181,9 @@ def config_changed():
     for r_id in relation_ids('identity-service'):
         keystone_joined(relid=r_id)
 
+    for r_id in relation_ids('cluster'):
+        cluster_joined(relation_id=r_id)
+
     for r_id in relation_ids('object-store'):
         object_store_joined(relation_id=r_id)
     try_initialize_swauth()
@@ -354,19 +357,20 @@ def object_store_joined(relation_id=None):
 
 @hooks.hook('cluster-relation-joined')
 def cluster_joined(relation_id=None):
+    settings = {}
     for addr_type in ADDRESS_TYPES:
         netaddr_cfg = 'os-{}-network'.format(addr_type)
         address = get_address_in_network(config(netaddr_cfg))
         if address:
-            settings = {'{}-address'.format(addr_type): address}
-            relation_set(relation_id=relation_id, relation_settings=settings)
+            settings['{}-address'.format(addr_type)] = address
 
     if config('prefer-ipv6'):
         private_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
-        relation_set(relation_id=relation_id,
-                     relation_settings={'private-address': private_addr})
+        settings['private-address'] = private_addr
     else:
-        private_addr = unit_get('private-address')
+        settings['private-address'] = unit_get('private-address')
+
+    relation_set(relation_id=relation_id, relation_settings=settings)
 
 
 def is_all_peers_stopped(responses):
