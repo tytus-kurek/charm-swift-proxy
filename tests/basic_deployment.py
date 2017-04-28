@@ -24,6 +24,7 @@ from charmhelpers.contrib.openstack.amulet.utils import (
     OpenStackAmuletUtils,
     DEBUG
 )
+from charmhelpers.contrib.openstack.utils import CompareOpenStackReleases
 
 # Use DEBUG to turn on debug logging
 u = OpenStackAmuletUtils(DEBUG)
@@ -613,7 +614,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         """Verify that the service is configured and operates correctly when
            using Keystone v3 auth."""
         os_release = self._get_openstack_release_string()
-        if os_release < 'kilo':
+        if CompareOpenStackReleases(os_release) < 'kilo':
             u.log.info('Skipping test, {} < kilo'.format(os_release))
             return
         u.log.info('Checking that service is configured and operate correctly '
