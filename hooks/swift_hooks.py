@@ -70,7 +70,6 @@ from charmhelpers.core.hookenv import (
     config,
     local_unit,
     remote_unit,
-    unit_get,
     relation_set,
     relation_ids,
     relation_get,
@@ -103,8 +102,7 @@ from charmhelpers.contrib.openstack.ip import (
 from charmhelpers.contrib.network.ip import (
     get_iface_for_address,
     get_netmask_for_address,
-    get_address_in_network,
-    get_ipv6_addr,
+    get_relation_ip,
     is_ipv6,
     format_ipv6_addr,
 )
@@ -358,17 +356,15 @@ def object_store_joined(relation_id=None):
 @hooks.hook('cluster-relation-joined')
 def cluster_joined(relation_id=None):
     settings = {}
+
     for addr_type in ADDRESS_TYPES:
-        netaddr_cfg = 'os-{}-network'.format(addr_type)
-        address = get_address_in_network(config(netaddr_cfg))
+        address = get_relation_ip(
+            addr_type,
+            cidr_network=config('os-{}-network'.format(addr_type)))
         if address:
             settings['{}-address'.format(addr_type)] = address
 
-    if config('prefer-ipv6'):
-        private_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
-        settings['private-address'] = private_addr
-    else:
-        settings['private-address'] = unit_get('private-address')
+    settings['private-address'] = get_relation_ip('cluster')
 
     relation_set(relation_id=relation_id, relation_settings=settings)
 
