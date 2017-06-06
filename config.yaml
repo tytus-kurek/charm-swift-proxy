@@ -1,45 +1,111 @@
 options:
+  debug:
+    type: boolean
+    default: False
+    description: Enable debug level logging.
+  log-headers:
+    type: boolean
+    default: False
+    description: Enable logging of all request headers.
   openstack-origin:
-    default: distro
     type: string
+    default: distro
     description: |
-      Repository from which to install.  May be one of the following:
+      Repository from which to install. May be one of the following:
       distro (default), ppa:somecustom/ppa, a deb url sources entry,
-      or a supported Cloud Archive release pocket.
-
-      Supported Cloud Archive sources include:
-
+      or a supported Ubuntu Cloud Archive e.g.
+      .
       cloud:<series>-<openstack-release>
       cloud:<series>-<openstack-release>/updates
       cloud:<series>-<openstack-release>/staging
       cloud:<series>-<openstack-release>/proposed
-
-      For series=Precise we support cloud archives for openstack-release:
-         * icehouse
-
-      For series=Trusty we support cloud archives for openstack-release:
-         * juno
-         * kilo
-         * ...
-
+      .
+      See https://wiki.ubuntu.com/OpenStack/CloudArchive for info on which
+      cloud archives are available and supported.
+      .
       NOTE: updating this setting to a source that is known to provide
-      a later version of OpenStack will trigger a software upgrade.
-  region:
-    default: RegionOne
+      a later version of OpenStack will trigger a software upgrade unless
+      action-managed-upgrade is set to True.
+  action-managed-upgrade:
+    type: boolean
+    default: False
+    description: |
+      If True enables openstack upgrades for this charm via juju actions.
+      You will still need to set openstack-origin to the new repository but
+      instead of an upgrade running automatically across all units, it will
+      wait for you to execute the openstack-upgrade action for this charm on
+      each unit. If False it will revert to existing behavior of upgrading
+      all units on config change.
+  harden:
     type: string
+    default:
+    description: |
+      Apply system hardening. Supports a space-delimited list of modules
+      to run. Supported modules currently include os, ssh, apache and mysql.
+  # General Swift Proxy config
+  region:
+    type: string
+    default: RegionOne
     description: OpenStack region that this swift-proxy supports.
-  # Ring configuration
-  partition-power:
-    default: 8
+  bind-port:
     type: int
-    description: Partition power.
-  replicas:
-    default: 3
+    default: 8080
+    description: TCP port to listen on.
+  workers:
     type: int
-    description: Minimum replicas.
-  min-hours:
     default: 0
+    description: |
+      Number of TCP workers to launch (0 for the number of system cores).
+  operator-roles:
+    type: string
+    default: "Member,Admin"
+    description: Comma-separated list of Swift operator roles.
+  auth-type:
+    type: string
+    default: tempauth
+    description: Auth method to use, tempauth, swauth or keystone
+  swauth-admin-key:
+    type: string
+    default: 
+    description: The secret key to use to authenticate as an swauth admin
+  delay-auth-decision:
+    type: boolean
+    default: true
+    description: Delay authentication to downstream WSGI services.
+  node-timeout:
     type: int
+    default: 60
+    description: |
+      How long the proxy server will wait on responses from the
+      account/container/object servers.
+  recoverable-node-timeout:
+    type: int
+    default: 30
+    description: |
+      How long the proxy server will wait for an initial response and to read a
+      chunk of data from the object servers while serving GET / HEAD requests.
+      Timeouts from these requests can be recovered from so setting this to
+      something lower than node-timeout would provide quicker error recovery
+      while allowing for a longer timeout for non-recoverable requests (PUTs).
+  # Swift ring management config
+  partition-power:
+    type: int
+    default: 8
+    description: |
+      This value needs to be set according to the parameters of the cluster
+      being deployed. In order to achieve an optimal distribution of objects
+      within your cluster without over consuming system resources it is
+      important that this value not be too low or high but it must also be
+      high enough to account for future expansion of your cluster since it
+      cannot be changed once the rings have been built. A rough calculation
+      for this value should be no less than log2(total_disks * 100).
+  replicas:
+    type: int
+    default: 3
+    description: Minimum replicas for each object stored in the cluster.
+  min-hours:
+    type: int
+    default: 0
     description: |
       This is the Swift ring builder min_part_hours parameter. This
       setting represents the amount of time in hours that Swift will wait
@@ -56,94 +122,19 @@ options:
       the builders. If True, any changes to the builders will not result in a
       ring re-balance and sync until this value is set back to False.
   zone-assignment:
-    default: "manual"
     type: string
+    default: "manual"
     description: |
       Which policy to use when assigning new storage nodes to zones.
-
+      .
         manual - Allow swift-storage services to request zone membership.
         auto - Assign new swift-storage units to zones automatically.
-
+      .
       The configured replica minimum must be met by an equal number of storage
-      zones before the storage ring will be initially balance.  Deployment
+      zones before the storage ring will be initially balance. Deployment
       requirements differ based on the zone-assignment policy configured, see
       this charm's README for details.
-  # User provided SSL cert and key
-  ssl_cert:
-    type: string
-    default:
-    description: |
-      Base64 encoded SSL certificate to install and use for API ports.
-      .
-         juju set swift-proxy ssl_cert="$(cat cert | base64)" \
-                              ssl_key="$(cat key | base64)"
-      .
-      Setting this value (and ssl_key) will enable reverse proxying, point
-      Swifts's entry in the Keystone catalog to use https, and override
-      any certficiate and key issued by Keystone (if it is configured to
-      do so).
-  ssl_key:
-    type: string
-    default:
-    description: |
-      Base64 encoded SSL key to use with certificate specified as ssl_cert.
-  ssl_ca:
-    type: string
-    default:
-    description: |
-      Base64 encoded SSL CA to use with the certificate and key provided - only
-      required if you are providing a privately signed ssl_cert and ssl_key.
-  # General Swift Proxy configuration
-  bind-port:
-    default: 8080
-    type: int
-    description: TCP port to listen on
-  workers:
-    default: 0
-    type: int
-    description: |
-      Number of TCP workers to launch (0 for the number of system cores).
-  operator-roles:
-    default: "Member,Admin"
-    type: string
-    description: Comma-separated list of Swift operator roles.
-  auth-type:
-    default: tempauth
-    type: string
-    description: Auth method to use, tempauth, swauth or keystone
-  swauth-admin-key:
-    default: 
-    type: string
-    description: The secret key to use to authenticate as an swauth admin
-  delay-auth-decision:
-    default: true
-    type: boolean
-    description: Delay authentication to downstream WSGI services.
-  node-timeout:
-    default: 60
-    type: int
-    description: |
-      How long the proxy server will wait on responses from the
-      account/container/object servers.
-  recoverable-node-timeout:
-    default: 30
-    type: int
-    description: |
-      How long the proxy server will wait for an initial response and to read a
-      chunk of data from the object servers while serving GET / HEAD requests.
-      Timeouts from these requests can be recovered from so setting this to
-      something lower than node-timeout would provide quicker error recovery
-      while allowing for a longer timeout for non-recoverable requests (PUTs).
-  # Logging configuration
-  debug:
-    default: False
-    type: boolean
-    description: Enable debug level logging.
-  log-headers:
-    default: False
-    type: boolean
-    description: Enable logging of all request headers.
-  # Manual Keystone configuration.
+  # Manual Keystone config
   keystone-auth-host:
     type: string
     default:
@@ -168,7 +159,7 @@ options:
     type: string
     default:
     description: Keystone admin password
-  # HA configuration settings
+  # HA config
   swift-hash:
     type: string
     default:
@@ -177,8 +168,8 @@ options:
     type: boolean
     default: False
     description: |
-        Use DNS HA with MAAS 2.0. Note if this is set do not set vip
-        settings below.
+      Use DNS HA with MAAS 2.0. Note if this is set do not set vip
+      settings below.
   vip:
     type: string
     default:
@@ -199,13 +190,36 @@ options:
     description: |
       Default multicast port number that will be used to communicate between
       HA Cluster nodes.
-  # Network configuration options
-  # by default all access is over 'private-address'
+  haproxy-server-timeout:
+    type: int
+    default:
+    description: |
+      Server timeout configuration in ms for haproxy, used in HA
+      configurations. If not provided, default value of 30000ms is used.
+  haproxy-client-timeout:
+    type: int
+    default:
+    description: |
+      Client timeout configuration in ms for haproxy, used in HA
+      configurations. If not provided, default value of 30000ms is used.
+  haproxy-queue-timeout:
+    type: int
+    default:
+    description: |
+      Queue timeout configuration in ms for haproxy, used in HA
+      configurations. If not provided, default value of 5000ms is used.
+  haproxy-connect-timeout:
+    type: int
+    default:
+    description: |
+      Connect timeout configuration in ms for haproxy, used in HA
+      configurations. If not provided, default value of 5000ms is used.
+  # Network config (by default all access is over 'private-address')
   os-admin-network:
     type: string
     default:
     description: |
-      The IP address and netmask of the OpenStack Admin network (e.g.,
+      The IP address and netmask of the OpenStack Admin network (e.g.
       192.168.0.0/24)
       .
       This network will be used for admin endpoints.
@@ -213,7 +227,7 @@ options:
     type: string
     default:
     description: |
-      The IP address and netmask of the OpenStack Internal network (e.g.,
+      The IP address and netmask of the OpenStack Internal network (e.g.
       192.168.0.0/24)
       .
       This network will be used for internal endpoints.
@@ -243,11 +257,11 @@ options:
     description: |
       The hostname or address of the internal endpoints created for swift-proxy
       in the keystone identity provider.
-
+      .
       This value will be used for internal endpoints. For example, an
       os-internal-hostname set to 'files.internal.example.com' with will create
       the following internal endpoint for the swift-proxy:
-
+      .
       https://files.internal.example.com:80/swift/v1
   os-admin-hostname:
     type: string
@@ -255,11 +269,11 @@ options:
     description: |
       The hostname or address of the admin endpoints created for swift-proxy
       in the keystone identity provider.
-
+      .
       This value will be used for admin endpoints. For example, an
       os-admin-hostname set to 'files.admin.example.com' with will create
       the following admin endpoint for the swift-proxy:
-
+      .
       https://files.admin.example.com:80/swift/v1
   prefer-ipv6:
     type: boolean
@@ -268,64 +282,48 @@ options:
       If True enables IPv6 support. The charm will expect network interfaces
       to be configured with an IPv6 address. If set to False (default) IPv4
       is expected.
-
+      .
       NOTE: these charms do not currently support IPv6 privacy extension. In
       order for this charm to function correctly, the privacy extension must be
       disabled and a non-temporary address must be configured/available on
       your network interface.
-  nagios_context:
-    default: "juju"
+  ssl_cert:
     type: string
+    default:
     description: |
-      Used by the nrpe-external-master subordinate charm.
-      A string that will be prepended to instance name to set the host name
-      in nagios. So for instance the hostname would be something like:
-          juju-myservice-0
-      If you're running multiple environments with the same services in them
+      Base64 encoded SSL certificate to install and use for API ports.
+      .
+         juju set swift-proxy ssl_cert="$(cat cert | base64)" \
+                              ssl_key="$(cat key | base64)"
+      .
+      Setting this value (and ssl_key) will enable reverse proxying, point
+      Swifts's entry in the Keystone catalog to use https, and override
+      any certficiate and key issued by Keystone (if it is configured to
+      do so).
+  ssl_key:
+    type: string
+    default:
+    description: |
+      Base64 encoded SSL key to use with certificate specified as ssl_cert.
+  ssl_ca:
+    type: string
+    default:
+    description: |
+      Base64-encoded SSL CA to use with the certificate and key provided - only
+      required if you are providing a privately signed ssl_cert and ssl_key.
+  # Monitoring config
+  nagios_context:
+    type: string
+    default: "juju"
+    description: |
+      Used by the nrpe-external-master subordinate charm. A string that will
+      be prepended to instance name to set the host name in nagios. So for
+      instance the hostname would be something like 'juju-myservice-0'. If
+      you are running multiple environments with the same services in them
       this allows you to differentiate between them.
   nagios_servicegroups:
+    type: string
     default: ""
-    type: string
     description: |
-      A comma-separated list of nagios servicegroups.
-      If left empty, the nagios_context will be used as the servicegroup
-  action-managed-upgrade:
-    type: boolean
-    default: False
-    description: |
-      If True enables openstack upgrades for this charm via juju actions.
-      You will still need to set openstack-origin to the new repository but
-      instead of an upgrade running automatically across all units, it will
-      wait for you to execute the openstack-upgrade action for this charm on
-      each unit. If False it will revert to existing behavior of upgrading
-      all units on config change.
-  haproxy-server-timeout:
-    type: int
-    default:
-    description: |
-       Server timeout configuration in ms for haproxy, used in HA
-       configurations. If not provided, default value of 30000ms is used.
-  haproxy-client-timeout:
-    type: int
-    default:
-    description: |
-       Client timeout configuration in ms for haproxy, used in HA
-       configurations. If not provided, default value of 30000ms is used.
-  haproxy-queue-timeout:
-    type: int
-    default:
-    description: |
-       Queue timeout configuration in ms for haproxy, used in HA
-       configurations. If not provided, default value of 5000ms is used.
-  haproxy-connect-timeout:
-    type: int
-    default:
-    description: |
-       Connect timeout configuration in ms for haproxy, used in HA
-       configurations. If not provided, default value of 5000ms is used.
-  harden:
-    default:
-    type: string
-    description: |
-      Apply system hardening. Supports a space-delimited list of modules
-      to run. Supported modules currently include os, ssh, apache and mysql.
+      A comma-separated list of nagios servicegroups. If left empty, the
+      nagios_context will be used as the servicegroup.
