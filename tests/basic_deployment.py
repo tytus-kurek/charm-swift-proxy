@@ -135,7 +135,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         keystone_relation = self.keystone_sentry.relation(
             'identity-service', 'swift-proxy:identity-service')
         ep = self.keystone.service_catalog.url_for(service_type='identity',
-                                                   endpoint_type='publicURL')
+                                                   interface='publicURL')
         self.swift = swiftclient.Connection(
             authurl=ep,
             user=keystone_relation['service_username'],
