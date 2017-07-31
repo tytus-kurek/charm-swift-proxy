@@ -40,6 +40,8 @@ requires:
   ha:
     interface: hacluster
     scope: container
+  amqp:
+    interface: rabbitmq
 peers:
   cluster:
     interface: swift-ha

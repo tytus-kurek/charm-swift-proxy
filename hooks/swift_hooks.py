@@ -91,6 +91,7 @@ from charmhelpers.core.host import (
 from charmhelpers.fetch import (
     apt_install,
     apt_update,
+    filter_installed_packages,
 )
 from charmhelpers.payload.execd import execd_preinstall
 from charmhelpers.contrib.openstack.ip import (
@@ -184,6 +185,10 @@ def config_changed():
 
     for r_id in relation_ids('object-store'):
         object_store_joined(relation_id=r_id)
+
+    for r_id in relation_ids('amqp'):
+        amqp_joined(relation_id=r_id)
+
     try_initialize_swauth()
 
 
@@ -717,6 +722,11 @@ def update_nrpe_config():
 @hooks.hook('upgrade-charm')
 @harden()
 def upgrade_charm():
+    rel = openstack.get_os_codename_install_source(config('openstack-origin'))
+    pkgs = determine_packages(rel)
+    new_packages = filter_installed_packages(pkgs)
+    if new_packages:
+        apt_install(new_packages)
     update_rsync_acls()
 
 
@@ -724,6 +734,20 @@ def upgrade_charm():
 @harden()
 def update_status():
     log('Updating status.')
+
+
+@hooks.hook('amqp-relation-joined')
+def amqp_joined(relation_id=None):
+    relation_set(relation_id=relation_id,
+                 username=config('rabbit-user'),
+                 vhost=config('rabbit-vhost'))
+
+
+@hooks.hook('amqp-relation-changed',
+            'amqp-relation-departed')
+@restart_on_change(restart_map())
+def amqp_changed():
+    CONFIGS.write_all()
 
 
 def main():

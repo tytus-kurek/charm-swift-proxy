@@ -123,6 +123,8 @@ BASE_PACKAGES = [
 ]
 # > Folsom specific packages
 FOLSOM_PACKAGES = BASE_PACKAGES + ['swift-plugin-s3', 'swauth']
+# > Mitaka specific packages
+MITAKA_PACKAGES = FOLSOM_PACKAGES + ['python-ceilometermiddleware']
 
 SWIFT_HA_RES = 'grp_swift_vips'
 TEMPLATES = 'templates/'
@@ -136,7 +138,8 @@ CONFIG_FILES = OrderedDict([
     }),
     (SWIFT_PROXY_CONF, {
         'hook_contexts': [SwiftIdentityContext(),
-                          context.BindHostContext()],
+                          context.BindHostContext(),
+                          context.AMQPContext(ssl_dir=SWIFT_CONF_DIR)],
         'services': ['swift-proxy'],
     }),
     (HAPROXY_CONF, {
@@ -443,14 +446,13 @@ def ensure_swift_dir(conf_dir=os.path.dirname(SWIFT_CONF)):
 
 def determine_packages(release):
     """Determine what packages are needed for a given OpenStack release."""
-    if release == 'essex':
-        return BASE_PACKAGES
-    elif release == 'folsom':
-        return FOLSOM_PACKAGES
-    elif release == 'grizzly':
+    cmp_openstack = CompareOpenStackReleases(release)
+    if cmp_openstack >= 'mitaka':
+        return MITAKA_PACKAGES
+    elif cmp_openstack >= 'folsom':
         return FOLSOM_PACKAGES
     else:
-        return FOLSOM_PACKAGES
+        return BASE_PACKAGES
 
 
 def _load_builder(path):
