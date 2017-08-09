@@ -468,6 +468,15 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                 'admin_password': keystone_relation['service_password'],
             })
 
+        if self._get_openstack_release() >= self.trusty_mitaka:
+            expected['pipeline:main'] = {
+                'pipeline': 'catch_errors gatekeeper healthcheck proxy-logging'
+                ' cache swift3 s3token container_sync bulk tempurl slo dlo'
+                ' formpost authtoken keystoneauth staticweb'
+                ' versioned_writes container-quotas account-quotas'
+                ' proxy-logging proxy-server'
+            }
+
         if self._get_openstack_release() >= self.trusty_kilo:
             # Kilo and later
             expected['filter:authtoken'].update({

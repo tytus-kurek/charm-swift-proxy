@@ -189,4 +189,15 @@ alternatively these can also be provided as part of a juju native bundle configu
 
 **NOTE:** Spaces must be configured in the underlying provider prior to attempting to use them.
 
-**NOTE:** Existing deployments using os-*-network configuration options will continue to function; these options are preferred over any network space binding provided if set.
+**NOTE:** Existing deployments using os-\*-network configuration options will continue to function; these options are preferred over any network space binding provided if set.
+
+Telemetry support
+------------------
+
+For OpenStack releases >= Mitaka, improved telemetry collection support is possible by
+adding a relation between swift-proxy and rabbitmq-server:
+
+    juju add-relation swift-proxy rabbitmq-server
+
+**NOTE:** In a busy Swift deployment this can place additional load on the underlying
+message bus.
