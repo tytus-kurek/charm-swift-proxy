@@ -500,10 +500,13 @@ def exists_in_ring(ring_path, node):
     node['port'] = ring_port(ring_path, node)
 
     for dev in ring['devs']:
+        # Devices in the ring can be None if there are holes from previously
+        # removed devices so skip any that are None.
+        if not dev:
+            continue
         d = [(i, dev[i]) for i in dev if i in node and i != 'zone']
         n = [(i, node[i]) for i in node if i in dev and i != 'zone']
         if sorted(d) == sorted(n):
-
             log('Node already exists in ring (%s).' % ring_path, level=INFO)
             return True
 
@@ -514,13 +517,12 @@ def add_to_ring(ring_path, node):
     ring = _load_builder(ring_path)
     port = ring_port(ring_path, node)
 
-    devs = ring.to_dict()['devs']
-    next_id = 0
-    if devs:
-        next_id = len([d['id'] for d in devs])
-
+    # Note: this code used to attempt to calculate new dev ids, but made
+    # various assumptions (e.g. in order devices, all devices in the ring
+    # being valid, etc). The RingBuilder from the Swift library will
+    # automatically calculate the new device's ID if no id is provided (at
+    # least since the Icehouse release).
     new_dev = {
-        'id': next_id,
         'zone': node['zone'],
         'ip': node['ip'],
         'port': port,
@@ -1125,7 +1127,7 @@ def has_minimum_zones(rings):
             return False
         builder = _load_builder(ring).to_dict()
         replicas = builder['replicas']
-        zones = [dev['zone'] for dev in builder['devs']]
+        zones = [dev['zone'] for dev in builder['devs'] if dev]
         num_zones = len(set(zones))
         if num_zones < replicas:
             log("Not enough zones (%d) defined to satisfy minimum replicas "
