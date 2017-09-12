@@ -90,13 +90,6 @@ class SwiftUtilsTestCase(unittest.TestCase):
         self.assertTrue(mock_set_min_hours.called)
         self.assertTrue(mock_balance_rings.called)
 
-        mock_balance_rings.reset_mock()
-        swift_utils.update_rings(min_part_hours=10,
-                                 rebalance=False)
-        self.assertTrue(mock_get_min_hours.called)
-        self.assertTrue(mock_set_min_hours.called)
-        self.assertFalse(mock_balance_rings.called)
-
     @mock.patch('lib.swift_utils.previously_synced')
     @mock.patch('lib.swift_utils._load_builder')
     @mock.patch('lib.swift_utils.initialize_ring')
