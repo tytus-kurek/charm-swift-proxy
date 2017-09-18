@@ -33,6 +33,32 @@ def init_ring_paths(tmpdir):
             fd.write("0\n")
 
 
+def create_mock_load_builder_fn(mock_rings):
+    """To avoid the need for swift.common.ring library, mock a basic rings
+    dictionary, keyed by path. Each ring has enough logic to hold a dictionary
+    with a single 'devs' key, which stores the list of passed dev(s) by
+    add_dev().
+
+    If swift (actual) ring representation diverges (see _load_builder),
+    this mock will need to be adapted.
+
+    :param mock_rings: a dict containing the dict form of the rings
+    """
+    def mock_load_builder_fn(path):
+        class mock_ring(object):
+            def __init__(self, path):
+                self.path = path
+
+            def to_dict(self):
+                return mock_rings[self.path]
+
+            def add_dev(self, dev):
+                mock_rings[self.path]['devs'].append(dev)
+
+        return mock_ring(path)
+    return mock_load_builder_fn
+
+
 class SwiftUtilsTestCase(unittest.TestCase):
 
     @mock.patch.object(swift_utils, 'previously_synced')
@@ -107,33 +133,13 @@ class SwiftUtilsTestCase(unittest.TestCase):
                                         mock_initialize_ring,
                                         mock_load_builder,
                                         mock_previously_synced):
-        # To avoid the need for swift.common.ring library, mock a basic
-        # rings dictionary, keyed by path.
-        # Each ring has enough logic to hold a dictionary with a single 'devs'
-        # key, which stores the list of passed dev(s) by add_dev().
-        #
-        # If swift (actual) ring representation diverges (see _load_builder),
-        # this mock will need to be adapted.
         mock_rings = {}
-
-        def mock_load_builder_fn(path):
-            class mock_ring(object):
-                def __init__(self, path):
-                    self.path = path
-
-                def to_dict(self):
-                    return mock_rings[self.path]
-
-                def add_dev(self, dev):
-                    mock_rings[self.path]['devs'].append(dev)
-
-            return mock_ring(path)
 
         def mock_initialize_ring_fn(path, *args):
             mock_rings.setdefault(path, {'devs': []})
 
         mock_is_elected_leader.return_value = True
-        mock_load_builder.side_effect = mock_load_builder_fn
+        mock_load_builder.side_effect = create_mock_load_builder_fn(mock_rings)
         mock_initialize_ring.side_effect = mock_initialize_ring_fn
 
         init_ring_paths(tempfile.mkdtemp())
@@ -363,6 +369,86 @@ class SwiftUtilsTestCase(unittest.TestCase):
         self.assertFalse(swift_utils.timestamps_available('proxy/1'))
         mock_rel_get.return_value = {'broker-timestamp': '1234'}
         self.assertTrue(swift_utils.timestamps_available('proxy/2'))
+
+    @mock.patch.object(swift_utils, '_load_builder')
+    def test_exists_in_ring(self, mock_load_builder):
+        mock_rings = {}
+
+        mock_load_builder.side_effect = create_mock_load_builder_fn(mock_rings)
+        ring = 'account'
+        mock_rings[ring] = {
+            'devs': [
+                {'replication_port': 6000, 'zone': 1, 'weight': 100.0,
+                 'ip': '172.16.0.2', 'region': 1, 'port': 6000,
+                 'replication_ip': '172.16.0.2', 'parts': 2, 'meta': '',
+                 'device': u'bcache10', 'parts_wanted': 0, 'id': 199},
+                None,  # Ring can have holes, so add None to simulate
+                {'replication_port': 6000, 'zone': 1, 'weight': 100.0,
+                 'ip': '172.16.0.2', 'region': 1, 'id': 198,
+                 'replication_ip': '172.16.0.2', 'parts': 2, 'meta': '',
+                 'device': u'bcache13', 'parts_wanted': 0, 'port': 6000},
+            ]
+        }
+
+        node = {
+            'ip': '172.16.0.2',
+            'region': 1,
+            'account_port': 6000,
+            'zone': 1,
+            'replication_port': 6000,
+            'weight': 100.0,
+            'device': u'bcache10',
+        }
+
+        ret = swift_utils.exists_in_ring(ring, node)
+        self.assertTrue(ret)
+
+        node['region'] = 2
+        ret = swift_utils.exists_in_ring(ring, node)
+        self.assertFalse(ret)
+
+    @mock.patch.object(swift_utils, '_write_ring')
+    @mock.patch.object(swift_utils, '_load_builder')
+    def test_add_to_ring(self, mock_load_builder, mock_write_ring):
+        mock_rings = {}
+        mock_load_builder.side_effect = create_mock_load_builder_fn(mock_rings)
+        ring = 'account'
+        mock_rings[ring] = {
+            'devs': []
+        }
+
+        node = {
+            'ip': '172.16.0.2',
+            'region': 1,
+            'account_port': 6000,
+            'zone': 1,
+            'device': '/dev/sdb',
+        }
+
+        swift_utils.add_to_ring(ring, node)
+        mock_write_ring.assert_called_once()
+        self.assertTrue('id' not in mock_rings[ring]['devs'][0])
+
+    @mock.patch('os.path.isfile')
+    @mock.patch.object(swift_utils, '_load_builder')
+    def test_has_minimum_zones(self, mock_load_builder, mock_is_file):
+        mock_rings = {}
+
+        mock_load_builder.side_effect = create_mock_load_builder_fn(mock_rings)
+        for ring in swift_utils.SWIFT_RINGS:
+            mock_rings[ring] = {
+                'replicas': 3,
+                'devs': [{'zone': 1}, {'zone': 2}, None, {'zone': 3}],
+            }
+        ret = swift_utils.has_minimum_zones(swift_utils.SWIFT_RINGS)
+        self.assertTrue(ret)
+
+        # Increase the replicas to make sure that it returns false
+        for ring in swift_utils.SWIFT_RINGS:
+            mock_rings[ring]['replicas'] = 4
+
+        ret = swift_utils.has_minimum_zones(swift_utils.SWIFT_RINGS)
+        self.assertFalse(ret)
 
     @mock.patch('lib.swift_utils.config')
     @mock.patch('lib.swift_utils.set_os_workload_status')
