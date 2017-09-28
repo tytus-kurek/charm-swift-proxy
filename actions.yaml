@@ -31,3 +31,5 @@ openstack-upgrade:
   description: |
     Perform openstack upgrades. Config option action-managed-upgrade must be
     set to True.
+diskusage:
+  description: Run swift-recon -d on the specified unit.  Returns values in GB.
