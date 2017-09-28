@@ -58,7 +58,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
            """
         this_service = {'name': 'swift-proxy'}
         other_services = [
-            {'name': 'percona-cluster', 'constraints': {'mem': '3072M'}},
+            {'name': 'percona-cluster'},
             {'name': 'keystone'},
             {'name': 'glance'},
             {'name': 'swift-storage'}
@@ -95,10 +95,8 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             'overwrite': 'true'
         }
         pxc_config = {
-            'dataset-size': '25%',
+            'innodb-buffer-pool-size': '256M',
             'max-connections': 1000,
-            'root-password': 'ChangeMe123',
-            'sst-password': 'ChangeMe123',
         }
         configs = {
             'keystone': keystone_config,
