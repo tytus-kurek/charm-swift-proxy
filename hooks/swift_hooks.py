@@ -228,7 +228,7 @@ def keystone_changed():
 
 
 @hooks.hook('swift-storage-relation-joined')
-def storage_joined():
+def storage_joined(rid=None):
     if not is_elected_leader(SWIFT_HA_RES):
         log("New storage relation joined - stopping proxy until ring builder "
             "synced", level=INFO)
@@ -240,6 +240,13 @@ def storage_joined():
         # any existing ones from the www dir.
         mark_www_rings_deleted()
     try_initialize_swauth()
+
+    # NOTE(jamespage): Ensure private-address is set to any network-space
+    #                  binding provided by the charm user.
+    relation_set(
+        relation_id=rid,
+        relation_settings={'private-address': get_relation_ip('swift-storage')}
+    )
 
 
 def get_host_ip(rid=None, unit=None):

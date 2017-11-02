@@ -233,7 +233,7 @@ class SwiftHooksTestCase(unittest.TestCase):
     @patch.object(swift_hooks, 'update_dns_ha_resource_params')
     @patch.object(swift_hooks, 'get_hacluster_config')
     @patch.object(swift_hooks, 'config')
-    def test_ha_jrelation_oined_dns_ha(self, test_config, get_hacluster_config,
+    def test_ha_relation_joined_dns_ha(self, test_config, get_hacluster_config,
                                        update_dns_ha_resource_params,
                                        relation_set):
         def _fake_update(resources, resource_params, relation_id=None):
@@ -271,3 +271,24 @@ class SwiftHooksTestCase(unittest.TestCase):
         swift_hooks.ha_relation_joined()
         self.assertTrue(update_dns_ha_resource_params.called)
         relation_set.assert_called_with(**args)
+
+    @patch.object(swift_hooks, 'is_elected_leader')
+    @patch.object(swift_hooks, 'get_relation_ip')
+    @patch.object(swift_hooks, 'try_initialize_swauth')
+    @patch.object(swift_hooks, 'mark_www_rings_deleted')
+    @patch.object(swift_hooks, 'service_stop')
+    @patch.object(swift_hooks, 'relation_set')
+    def test_swift_storage_joined(self, relation_set, service_stop,
+                                  mark_www_rings_deleted,
+                                  try_initialize_swauth,
+                                  get_relation_ip,
+                                  is_elected_leader):
+        is_elected_leader.return_value = False
+        get_relation_ip.return_value = '10.10.20.243'
+        swift_hooks.storage_joined(rid='swift-storage:23')
+        get_relation_ip.assert_called_with('swift-storage')
+        relation_set.assert_called_with(
+            relation_id='swift-storage:23',
+            relation_settings={'private-address': '10.10.20.243'}
+        )
+        try_initialize_swauth.assert_called_once()
