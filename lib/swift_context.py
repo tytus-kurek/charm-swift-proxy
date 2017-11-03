@@ -108,6 +108,9 @@ class SwiftIdentityContext(OSContextGenerator):
             'node_timeout': config('node-timeout'),
             'recoverable_node_timeout': config('recoverable-node-timeout'),
             'log_headers': config('log-headers'),
+            'statsd_host': config('statsd-host'),
+            'statsd_port': config('statsd-port'),
+            'statsd_sample_rate': config('statsd-sample-rate')
         }
 
         admin_key = leader_get('swauth-admin-key')

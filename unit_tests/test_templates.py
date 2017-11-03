@@ -77,3 +77,20 @@ class ProxyServerTemplateTestCase(unittest.TestCase):
             result = template.render()
 
             self.assertTrue(result.startswith("[DEFAULT]"))
+
+    def test_statsd_config_for_all_releases(self):
+        """The configs contain statsd settings if statsd-host is set."""
+        for release in ('grizzly', 'havana', 'icehouse', 'mitaka'):
+            template = self.get_template_for_release(release)
+
+            result = template.render(statsd_host='127.0.0.1')
+
+            self.assertTrue("log_statsd_host" in result)
+            self.assertTrue("log_statsd_port" in result)
+            self.assertTrue("log_statsd_default_sample_rate" in result)
+
+            result = template.render()
+
+            self.assertFalse("log_statsd_host" in result)
+            self.assertFalse("log_statsd_port" in result)
+            self.assertFalse("log_statsd_default_sample_rate" in result)

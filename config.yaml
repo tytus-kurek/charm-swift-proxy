@@ -335,3 +335,22 @@ options:
     type: string
     default: openstack
     description: Rabbitmq vhost name.
+  statsd-host:
+    default: ''
+    type: string
+    description: |
+      Enable statsd metrics to be sent to the specified host.
+      If this value is empty, statsd logging will be disabled.
+  statsd-port:
+    default: 3125
+    type: int
+    description: |
+      Destination port on the provided statsd host to send samples to.
+      Only takes effect if statsd-host is set.
+  statsd-sample-rate:
+    default: 1.0
+    type: float
+    description: |
+      Sample rate determines what percentage of the metric points a
+      client should send to the server.
+      Only takes effect if statsd-host is set.
