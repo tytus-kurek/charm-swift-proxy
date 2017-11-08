@@ -753,3 +753,11 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         u.log.debug('Checking pause/resume actions...')
         self._test_pause()
         self._test_resume()
+
+    def test_903_disk_usage_action(self):
+        """diskusage action can be run"""
+        u.log.info("Testing diskusage action")
+        action_id = u.run_action(self.swift_proxy_sentry, "diskusage")
+        assert u.wait_on_action(action_id), "diskusage action failed."
+
+        u.log.info('OK')

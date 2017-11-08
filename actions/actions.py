@@ -22,13 +22,22 @@ import yaml
 sys.path.append('hooks/')
 
 from charmhelpers.core.host import service_pause, service_resume
-from charmhelpers.core.hookenv import action_fail
+from charmhelpers.core.hookenv import (
+    action_fail,
+    action_set,
+)
+
 from charmhelpers.contrib.openstack.utils import (
     set_unit_paused,
     clear_unit_paused,
 )
 from lib.swift_utils import assess_status, services
 from swift_hooks import CONFIGS
+
+from subprocess import (
+    check_output,
+    CalledProcessError,
+)
 
 
 def get_action_parser(actions_yaml_path, action_name,
@@ -73,9 +82,32 @@ def resume(args):
     assess_status(CONFIGS, args.services)
 
 
+def diskusage(args):
+    """Runs 'swift-recon -d' and returns values in GB.
+    @raises CalledProcessError on check_output failure
+    @raises Exception on any other failure
+    """
+    try:
+        raw_output = check_output(['swift-recon', '-d'])
+        recon_result = list(line.strip().split(' ')
+                            for line in raw_output.splitlines()
+                            if 'Disk' in line)
+        for line in recon_result:
+            if 'space' in line:
+                line[4] = str(int(line[4]) / 1024 / 1024 / 1024) + 'GB'
+                line[6] = str(int(line[6]) / 1024 / 1024 / 1024) + 'GB'
+        result = [' '.join(x) for x in recon_result]
+        action_set({'output': result})
+    except CalledProcessError as e:
+        action_set({'output': e.output})
+        action_fail('Failed to run swift-recon -d')
+    except:
+        raise
+
+
 # A dictionary of all the defined actions to callables (which take
 # parsed arguments).
-ACTIONS = {"pause": pause, "resume": resume}
+ACTIONS = {"pause": pause, "resume": resume, 'diskusage': diskusage}
 
 
 def main(argv):

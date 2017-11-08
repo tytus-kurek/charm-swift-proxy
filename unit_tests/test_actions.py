@@ -247,3 +247,66 @@ class AddUserTestCase(CharmTestCase):
 
         self.action_fail.assert_called_once_with(
             'Adding user test failed with: ""')
+
+
+class DiskUsageTestCase(CharmTestCase):
+
+    TEST_RECON_OUTPUT = '===================================================' \
+                        '============================\n--> Starting ' \
+                        'reconnaissance on 9 hosts\n========================' \
+                        '===================================================' \
+                        '====\n[2017-11-03 21:50:30] Checking disk usage now' \
+                        '\nDistribution Graph:\n 40%  108 ******************' \
+                        '***************************************************' \
+                        '\n 41%   15 *********\n 42%   50 ******************' \
+                        '*************\n 43%    5 ***\n 44%    1 \n 45%    ' \
+                        '1 \nDisk usage: space used: 89358060716032 of ' \
+                        '215829411840000\nDisk usage: space free: ' \
+                        '126471351123968 of 215829411840000\nDisk usage: ' \
+                        'lowest: 40.64%, highest: 45.63%, avg: ' \
+                        '41.4021703318%\n===================================' \
+                        '============================================\n'
+
+    TEST_RESULT = ['Disk usage: space used: 83221GB of 201006GB',
+                   'Disk usage: space free: 117785GB of 201006GB',
+                   'Disk usage: lowest: 40.64%, highest: 45.63%, avg: '
+                   '41.4021703318%']
+
+    def setUp(self):
+        super(DiskUsageTestCase, self).setUp(
+            actions.actions, ["check_output", "action_set", "action_fail"])
+
+    def test_success(self):
+        """Ensure that the action_set is called on success."""
+        self.check_output.return_value = 'Swift recon ran OK'
+        actions.actions.diskusage([])
+        self.check_output.assert_called_once_with(['swift-recon', '-d'])
+
+        self.action_set.assert_called()
+        self.action_fail.not_called()
+
+    def test_check_output_failure(self):
+        """Ensure that action_fail and action_set are called on
+        check_output failure."""
+        self.check_output.side_effect = actions.actions.CalledProcessError(
+            1, "Failure")
+
+        actions.actions.diskusage([])
+        self.check_output.assert_called_once_with(['swift-recon', '-d'])
+
+        self.action_set.assert_called()
+        self.action_fail.assert_called()
+
+    def test_failure(self):
+        """Ensure that action_fail is called on any other failure."""
+        self.check_output.side_effect = Exception("Failure")
+        with self.assertRaises(Exception):
+            actions.actions.diskusage([])
+        self.check_output.assert_called_once_with(['swift-recon', '-d'])
+
+    def test_recon_result(self):
+        """Ensure the data ultimately returned is the right format
+        """
+        self.check_output.return_value = self.TEST_RECON_OUTPUT
+        actions.actions.diskusage([])
+        self.action_set.assert_called_once_with({'output': self.TEST_RESULT})
