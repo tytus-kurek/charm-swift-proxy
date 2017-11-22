@@ -109,7 +109,7 @@ class SwiftContextTestCase(unittest.TestCase):
         expected = '##FILEHASH##'
         with tempfile.NamedTemporaryFile() as tmpfile:
             swift_context.SWIFT_HASH_FILE = tmpfile.name
-            tmpfile.write(expected)
+            tmpfile.write(expected.encode('UTF-8'))
             tmpfile.seek(0)
             os.fsync(tmpfile)
             hash = swift_context.get_swift_hash()

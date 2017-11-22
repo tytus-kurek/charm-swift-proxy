@@ -532,7 +532,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                 'admin_token': keystone_relation['admin_token']
             }
 
-        for section, pairs in expected.iteritems():
+        for section, pairs in expected.items():
             ret = u.validate_config_data(unit, conf, section, pairs)
             if ret:
                 message = "proxy-server config error: {}".format(ret)
@@ -596,13 +596,13 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             if not (ks_gl_rel['api_version'] == api_version and
                     ks_sw_rel['api_version'] == api_version):
                 u.log.info("change of api_version not propagated yet "
-                           "retries left: '%d' "
-                           "glance:identity-service api_version: '%s' "
-                           "swift-proxy:identity-service api_version: '%s' "
-                           % (i,
-                              ks_gl_rel['api_version'],
-                              ks_sw_rel['api_version']))
-                u.log.info("sleeping %d seconds..." % i)
+                           "retries left: '{}' "
+                           "glance:identity-service api_version: '{}' "
+                           "swift-proxy:identity-service api_version: '{}' "
+                           .format(i,
+                                   ks_gl_rel['api_version'],
+                                   ks_sw_rel['api_version']))
+                u.log.info("sleeping {} seconds...".format(i))
                 time.sleep(i)
             elif not u.validate_service_config_changed(
                     self.swift_proxy_sentry,
@@ -655,7 +655,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         self.d.configure(juju_service, set_alternate)
 
         sleep_time = 40
-        for s, conf_file in services.iteritems():
+        for s, conf_file in services.items():
             u.log.debug("Checking that service restarted: {}".format(s))
             if not u.validate_service_config_changed(sentry, mtime, s,
                                                      conf_file,

@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 #
 # Copyright 2016 Canonical Ltd
 #
@@ -13,31 +13,39 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import argparse
 import os
+from subprocess import (
+    check_output,
+    CalledProcessError,
+)
 import sys
 import yaml
 
-sys.path.append('hooks/')
+
+_path = os.path.dirname(os.path.realpath(__file__))
+_parent = os.path.abspath(os.path.join(_path, '..'))
+
+
+def _add_path(path):
+    if path not in sys.path:
+        sys.path.insert(1, path)
+
+
+_add_path(_parent)
+
 
 from charmhelpers.core.host import service_pause, service_resume
 from charmhelpers.core.hookenv import (
     action_fail,
     action_set,
 )
-
 from charmhelpers.contrib.openstack.utils import (
     set_unit_paused,
     clear_unit_paused,
 )
+from hooks.swift_hooks import CONFIGS
 from lib.swift_utils import assess_status, services
-from swift_hooks import CONFIGS
-
-from subprocess import (
-    check_output,
-    CalledProcessError,
-)
 
 
 def get_action_parser(actions_yaml_path, action_name,
@@ -88,14 +96,14 @@ def diskusage(args):
     @raises Exception on any other failure
     """
     try:
-        raw_output = check_output(['swift-recon', '-d'])
+        raw_output = check_output(['swift-recon', '-d']).decode('UTF-8')
         recon_result = list(line.strip().split(' ')
                             for line in raw_output.splitlines()
                             if 'Disk' in line)
         for line in recon_result:
             if 'space' in line:
-                line[4] = str(int(line[4]) / 1024 / 1024 / 1024) + 'GB'
-                line[6] = str(int(line[6]) / 1024 / 1024 / 1024) + 'GB'
+                line[4] = str(int(line[4]) // (1024 * 1024 * 1024)) + 'GB'
+                line[6] = str(int(line[6]) // (1024 * 1024 * 1024)) + 'GB'
         result = [' '.join(x) for x in recon_result]
         action_set({'output': result})
     except CalledProcessError as e:
@@ -118,7 +126,7 @@ def main(argv):
     try:
         action = ACTIONS[action_name]
     except KeyError:
-        return "Action %s undefined" % action_name
+        return "Action {} undefined".format(action_name)
     else:
         try:
             action(args)

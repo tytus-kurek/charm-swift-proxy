@@ -26,8 +26,8 @@ with mock.patch('charmhelpers.core.hookenv.config'):
 
 def init_ring_paths(tmpdir):
     swift_utils.SWIFT_CONF_DIR = tmpdir
-    for ring in swift_utils.SWIFT_RINGS.iterkeys():
-        path = os.path.join(tmpdir, "%s.builder" % ring)
+    for ring in swift_utils.SWIFT_RINGS.keys():
+        path = os.path.join(tmpdir, "{}.builder".format(ring))
         swift_utils.SWIFT_RINGS[ring] = path
         with open(path, 'w') as fd:
             fd.write("0\n")
@@ -117,32 +117,18 @@ class SwiftUtilsTestCase(unittest.TestCase):
         self.assertTrue(mock_balance_rings.called)
 
     @mock.patch('lib.swift_utils.previously_synced')
-    @mock.patch('lib.swift_utils._load_builder')
-    @mock.patch('lib.swift_utils.initialize_ring')
-    @mock.patch('lib.swift_utils.update_www_rings')
-    @mock.patch('lib.swift_utils.get_builders_checksum')
-    @mock.patch('lib.swift_utils.get_rings_checksum')
     @mock.patch('lib.swift_utils.balance_rings')
-    @mock.patch('lib.swift_utils.log')
+    @mock.patch('lib.swift_utils.add_to_ring')
+    @mock.patch('lib.swift_utils.exists_in_ring')
     @mock.patch('lib.swift_utils.is_elected_leader')
-    def test_update_rings_multiple_devs(self, mock_is_elected_leader,
-                                        mock_log, mock_balance_rings,
-                                        mock_get_rings_checksum,
-                                        mock_get_builders_checksum,
-                                        mock_update_www_rings,
-                                        mock_initialize_ring,
-                                        mock_load_builder,
+    def test_update_rings_multiple_devs(self,
+                                        mock_is_leader_elected,
+                                        mock_exists_in_ring,
+                                        mock_add_to_ring,
+                                        mock_balance_rings,
                                         mock_previously_synced):
-        mock_rings = {}
-
-        def mock_initialize_ring_fn(path, *args):
-            mock_rings.setdefault(path, {'devs': []})
-
-        mock_is_elected_leader.return_value = True
-        mock_load_builder.side_effect = create_mock_load_builder_fn(mock_rings)
-        mock_initialize_ring.side_effect = mock_initialize_ring_fn
-
-        init_ring_paths(tempfile.mkdtemp())
+        # note that this test does not (and neither did its predecessor) test
+        # the 'min_part_hours is non None' part of update_rings()
         devices = ['sdb', 'sdc']
         node_settings = {
             'object_port': 6000,
@@ -151,26 +137,81 @@ class SwiftUtilsTestCase(unittest.TestCase):
             'zone': 1,
             'ip': '1.2.3.4',
         }
-        for path in swift_utils.SWIFT_RINGS.itervalues():
-            swift_utils.initialize_ring(path, 8, 3, 0)
 
-        # verify all devices added to each ring
         nodes = []
         for dev in devices:
-            node = {k: v for k, v in node_settings.items()}
+            node = node_settings.copy()
             node['device'] = dev
             nodes.append(node)
 
+        mock_is_leader_elected.return_value = True
+        mock_previously_synced.return_value = True
+        mock_exists_in_ring.side_effect = lambda *args: False
+
         swift_utils.update_rings(nodes)
-        for path in swift_utils.SWIFT_RINGS.itervalues():
-            devs = swift_utils._load_builder(path).to_dict()['devs']
-            added_devices = [dev['device'] for dev in devs]
-            self.assertEqual(devices, added_devices)
+        calls = [mock.call(os.path.join(swift_utils.SWIFT_CONF_DIR,
+                                        'account.builder'),
+                           {
+                               'zone': 1,
+                               'object_port': 6000,
+                               'ip': '1.2.3.4',
+                               'container_port': 6001,
+                               'device': 'sdb',
+                               'account_port': 6002}),
+                 mock.call(os.path.join(swift_utils.SWIFT_CONF_DIR,
+                                        'container.builder'),
+                           {
+                               'zone': 1,
+                               'object_port': 6000,
+                               'ip': '1.2.3.4',
+                               'container_port': 6001,
+                               'device': 'sdb',
+                               'account_port': 6002}),
+                 mock.call(os.path.join(swift_utils.SWIFT_CONF_DIR,
+                                        'object.builder'),
+                           {
+                               'zone': 1,
+                               'object_port': 6000,
+                               'ip': '1.2.3.4',
+                               'container_port': 6001,
+                               'device': 'sdb',
+                               'account_port': 6002}),
+                 mock.call(os.path.join(swift_utils.SWIFT_CONF_DIR,
+                                        'account.builder'),
+                           {
+                               'zone': 1,
+                               'object_port': 6000,
+                               'ip': '1.2.3.4',
+                               'container_port': 6001,
+                               'device': 'sdc',
+                               'account_port': 6002}),
+                 mock.call(os.path.join(swift_utils.SWIFT_CONF_DIR,
+                                        'container.builder'),
+                           {
+                               'zone': 1,
+                               'object_port': 6000,
+                               'ip': '1.2.3.4',
+                               'container_port': 6001,
+                               'device': 'sdc',
+                               'account_port': 6002}),
+                 mock.call(os.path.join(swift_utils.SWIFT_CONF_DIR,
+                                        'object.builder'),
+                           {
+                               'zone': 1,
+                               'object_port': 6000,
+                               'ip': '1.2.3.4',
+                               'container_port': 6001,
+                               'device': 'sdc',
+                               'account_port': 6002})]
+        mock_exists_in_ring.assert_has_calls(calls)
+        mock_balance_rings.assert_called_once_with()
+        mock_add_to_ring.assert_called()
 
         # try re-adding, assert add_to_ring was not called
-        with mock.patch('lib.swift_utils.add_to_ring') as mock_add_to_ring:
-            swift_utils.update_rings(nodes)
-            self.assertFalse(mock_add_to_ring.called)
+        mock_add_to_ring.reset_mock()
+        mock_exists_in_ring.side_effect = lambda *args: True
+        swift_utils.update_rings(nodes)
+        mock_add_to_ring.assert_not_called()
 
     @mock.patch('lib.swift_utils.balance_rings')
     @mock.patch('lib.swift_utils.log')
@@ -187,9 +228,9 @@ class SwiftUtilsTestCase(unittest.TestCase):
 
         @swift_utils.sync_builders_and_rings_if_changed
         def mock_balance():
-            for ring, builder in swift_utils.SWIFT_RINGS.iteritems():
+            for ring, builder in swift_utils.SWIFT_RINGS.items():
                 ring = os.path.join(swift_utils.SWIFT_CONF_DIR,
-                                    '%s.ring.gz' % ring)
+                                    '{}.ring.gz'.format(ring))
                 with open(ring, 'w') as fd:
                     fd.write(str(uuid.uuid4()))
 
@@ -370,53 +411,9 @@ class SwiftUtilsTestCase(unittest.TestCase):
         mock_rel_get.return_value = {'broker-timestamp': '1234'}
         self.assertTrue(swift_utils.timestamps_available('proxy/2'))
 
-    @mock.patch.object(swift_utils, '_load_builder')
-    def test_exists_in_ring(self, mock_load_builder):
-        mock_rings = {}
-
-        mock_load_builder.side_effect = create_mock_load_builder_fn(mock_rings)
+    @mock.patch.object(swift_utils, 'get_manager')
+    def test_add_to_ring(self, mock_get_manager):
         ring = 'account'
-        mock_rings[ring] = {
-            'devs': [
-                {'replication_port': 6000, 'zone': 1, 'weight': 100.0,
-                 'ip': '172.16.0.2', 'region': 1, 'port': 6000,
-                 'replication_ip': '172.16.0.2', 'parts': 2, 'meta': '',
-                 'device': u'bcache10', 'parts_wanted': 0, 'id': 199},
-                None,  # Ring can have holes, so add None to simulate
-                {'replication_port': 6000, 'zone': 1, 'weight': 100.0,
-                 'ip': '172.16.0.2', 'region': 1, 'id': 198,
-                 'replication_ip': '172.16.0.2', 'parts': 2, 'meta': '',
-                 'device': u'bcache13', 'parts_wanted': 0, 'port': 6000},
-            ]
-        }
-
-        node = {
-            'ip': '172.16.0.2',
-            'region': 1,
-            'account_port': 6000,
-            'zone': 1,
-            'replication_port': 6000,
-            'weight': 100.0,
-            'device': u'bcache10',
-        }
-
-        ret = swift_utils.exists_in_ring(ring, node)
-        self.assertTrue(ret)
-
-        node['region'] = 2
-        ret = swift_utils.exists_in_ring(ring, node)
-        self.assertFalse(ret)
-
-    @mock.patch.object(swift_utils, '_write_ring')
-    @mock.patch.object(swift_utils, '_load_builder')
-    def test_add_to_ring(self, mock_load_builder, mock_write_ring):
-        mock_rings = {}
-        mock_load_builder.side_effect = create_mock_load_builder_fn(mock_rings)
-        ring = 'account'
-        mock_rings[ring] = {
-            'devs': []
-        }
-
         node = {
             'ip': '172.16.0.2',
             'region': 1,
@@ -424,31 +421,15 @@ class SwiftUtilsTestCase(unittest.TestCase):
             'zone': 1,
             'device': '/dev/sdb',
         }
-
         swift_utils.add_to_ring(ring, node)
-        mock_write_ring.assert_called_once()
-        self.assertTrue('id' not in mock_rings[ring]['devs'][0])
-
-    @mock.patch('os.path.isfile')
-    @mock.patch.object(swift_utils, '_load_builder')
-    def test_has_minimum_zones(self, mock_load_builder, mock_is_file):
-        mock_rings = {}
-
-        mock_load_builder.side_effect = create_mock_load_builder_fn(mock_rings)
-        for ring in swift_utils.SWIFT_RINGS:
-            mock_rings[ring] = {
-                'replicas': 3,
-                'devs': [{'zone': 1}, {'zone': 2}, None, {'zone': 3}],
-            }
-        ret = swift_utils.has_minimum_zones(swift_utils.SWIFT_RINGS)
-        self.assertTrue(ret)
-
-        # Increase the replicas to make sure that it returns false
-        for ring in swift_utils.SWIFT_RINGS:
-            mock_rings[ring]['replicas'] = 4
-
-        ret = swift_utils.has_minimum_zones(swift_utils.SWIFT_RINGS)
-        self.assertFalse(ret)
+        mock_get_manager().add_dev.assert_called_once_with('account', {
+            'meta': '',
+            'zone': 1,
+            'ip': '172.16.0.2',
+            'device': '/dev/sdb',
+            'port': 6000,
+            'weight': 100
+        })
 
     @mock.patch('lib.swift_utils.config')
     @mock.patch('lib.swift_utils.set_os_workload_status')

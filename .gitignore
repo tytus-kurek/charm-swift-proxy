@@ -6,3 +6,4 @@ bin
 tags
 *.sw[nop]
 *.pyc
+func-results.json

@@ -156,7 +156,8 @@ class GetActionParserTestCase(unittest.TestCase):
         """ArgumentParser is seeded from actions.yaml."""
         actions_yaml = tempfile.NamedTemporaryFile(
             prefix="GetActionParserTestCase", suffix="yaml")
-        actions_yaml.write(yaml.dump({"foo": {"description": "Foo is bar"}}))
+        actions_yaml.write(
+            yaml.dump({"foo": {"description": "Foo is bar"}}).encode('UTF-8'))
         actions_yaml.seek(0)
         parser = actions.actions.get_action_parser(actions_yaml.name, "foo",
                                                    get_services=lambda: [])
@@ -236,9 +237,8 @@ class AddUserTestCase(CharmTestCase):
         self.determine_api_port.return_value = 8070
         self.CalledProcessError = ValueError
 
-        self.check_call.side_effect = subprocess.CalledProcessError(0,
-                                                                    "hi",
-                                                                    "no")
+        self.check_call.side_effect = subprocess.CalledProcessError(
+            0, "hi", "no")
         actions.add_user.add_user()
         self.leader_get.assert_called_with("swauth-admin-key")
         calls = [call("account"), call("username"), call("password")]
@@ -246,26 +246,28 @@ class AddUserTestCase(CharmTestCase):
         self.action_set.assert_not_called()
 
         self.action_fail.assert_called_once_with(
-            'Adding user test failed with: ""')
+            'Adding user test failed with: "Command \'hi\' returned non-zero '
+            'exit status 0"')
 
 
 class DiskUsageTestCase(CharmTestCase):
 
-    TEST_RECON_OUTPUT = '===================================================' \
-                        '============================\n--> Starting ' \
-                        'reconnaissance on 9 hosts\n========================' \
-                        '===================================================' \
-                        '====\n[2017-11-03 21:50:30] Checking disk usage now' \
-                        '\nDistribution Graph:\n 40%  108 ******************' \
-                        '***************************************************' \
-                        '\n 41%   15 *********\n 42%   50 ******************' \
-                        '*************\n 43%    5 ***\n 44%    1 \n 45%    ' \
-                        '1 \nDisk usage: space used: 89358060716032 of ' \
-                        '215829411840000\nDisk usage: space free: ' \
-                        '126471351123968 of 215829411840000\nDisk usage: ' \
-                        'lowest: 40.64%, highest: 45.63%, avg: ' \
-                        '41.4021703318%\n===================================' \
-                        '============================================\n'
+    TEST_RECON_OUTPUT = (
+        b'==================================================='
+        b'============================\n--> Starting '
+        b'reconnaissance on 9 hosts\n========================'
+        b'==================================================='
+        b'====\n[2017-11-03 21:50:30] Checking disk usage now'
+        b'\nDistribution Graph:\n 40%  108 ******************'
+        b'***************************************************'
+        b'\n 41%   15 *********\n 42%   50 ******************'
+        b'*************\n 43%    5 ***\n 44%    1 \n 45%    '
+        b'1 \nDisk usage: space used: 89358060716032 of '
+        b'215829411840000\nDisk usage: space free: '
+        b'126471351123968 of 215829411840000\nDisk usage: '
+        b'lowest: 40.64%, highest: 45.63%, avg: '
+        b'41.4021703318%\n==================================='
+        b'============================================\n')
 
     TEST_RESULT = ['Disk usage: space used: 83221GB of 201006GB',
                    'Disk usage: space free: 117785GB of 201006GB',
@@ -278,7 +280,7 @@ class DiskUsageTestCase(CharmTestCase):
 
     def test_success(self):
         """Ensure that the action_set is called on success."""
-        self.check_output.return_value = 'Swift recon ran OK'
+        self.check_output.return_value = b'Swift recon ran OK'
         actions.actions.diskusage([])
         self.check_output.assert_called_once_with(['swift-recon', '-d'])
 

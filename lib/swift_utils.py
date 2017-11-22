@@ -1,17 +1,20 @@
 import copy
+from collections import OrderedDict
+import functools
 import glob
 import hashlib
+import json
 import os
 import pwd
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
 import uuid
 
-from collections import OrderedDict
-from swift_context import (
+from lib.swift_context import (
     get_swift_hash,
     SwiftHashContext,
     SwiftIdentityContext,
@@ -40,6 +43,7 @@ from charmhelpers.contrib.hahelpers.cluster import (
 from charmhelpers.core.hookenv import (
     log,
     DEBUG,
+    ERROR,
     INFO,
     WARNING,
     local_unit,
@@ -78,7 +82,6 @@ SWIFT_CONF_DIR = '/etc/swift'
 SWIFT_RING_EXT = 'ring.gz'
 SWIFT_CONF = os.path.join(SWIFT_CONF_DIR, 'swift.conf')
 SWIFT_PROXY_CONF = os.path.join(SWIFT_CONF_DIR, 'proxy-server.conf')
-SWIFT_CONF_DIR = os.path.dirname(SWIFT_CONF)
 MEMCACHED_CONF = '/etc/memcached.conf'
 SWIFT_RINGS_CONF = '/etc/apache2/conf.d/swift-rings'
 SWIFT_RINGS_24_CONF = '/etc/apache2/conf-available/swift-rings.conf'
@@ -104,11 +107,11 @@ def get_www_dir():
         return WWW_DIR
 
 
-SWIFT_RINGS = {
-    'account': os.path.join(SWIFT_CONF_DIR, 'account.builder'),
-    'container': os.path.join(SWIFT_CONF_DIR, 'container.builder'),
-    'object': os.path.join(SWIFT_CONF_DIR, 'object.builder')
-}
+SWIFT_RINGS = OrderedDict((
+    ('account', os.path.join(SWIFT_CONF_DIR, 'account.builder')),
+    ('container', os.path.join(SWIFT_CONF_DIR, 'container.builder')),
+    ('object', os.path.join(SWIFT_CONF_DIR, 'object.builder')),
+))
 
 SSL_CERT = os.path.join(SWIFT_CONF_DIR, 'cert.crt')
 SSL_KEY = os.path.join(SWIFT_CONF_DIR, 'cert.key')
@@ -278,7 +281,7 @@ class SwiftProxyClusterRPC(object):
             rq['sync-only-builders'] = 1
 
         rq['broker-token'] = broker_token
-        rq['broker-timestamp'] = "%f" % time.time()
+        rq['broker-timestamp'] = "{:f}".format(time.time())
         rq['builder-broker'] = self._hostname
         return rq
 
@@ -367,7 +370,7 @@ def all_responses_equal(responses, key, must_exist=True):
     if all_equal:
         return True
 
-    log("Responses not all equal for key '%s'" % (key), level=DEBUG)
+    log("Responses not all equal for key '{}'".format(key), level=DEBUG)
     return False
 
 
@@ -413,7 +416,7 @@ def restart_map():
                     that should be restarted when file changes.
     """
     _map = []
-    for f, ctxt in CONFIG_FILES.iteritems():
+    for f, ctxt in CONFIG_FILES.items():
         svcs = []
         for svc in ctxt['services']:
             svcs.append(svc)
@@ -427,7 +430,7 @@ def services():
     ''' Returns a list of services associate with this charm '''
     _services = []
     for v in restart_map().values():
-        _services = _services + v
+        _services.extend(v)
     return list(set(_services))
 
 
@@ -455,67 +458,21 @@ def determine_packages(release):
         return BASE_PACKAGES
 
 
-def _load_builder(path):
-    # lifted straight from /usr/bin/swift-ring-builder
-    from swift.common.ring import RingBuilder
-    import cPickle as pickle
-    try:
-        builder = pickle.load(open(path, 'rb'))
-        if not hasattr(builder, 'devs'):
-            builder_dict = builder
-            builder = RingBuilder(1, 1, 1)
-            builder.copy_from(builder_dict)
-    except ImportError:  # Happens with really old builder pickles
-        builder = RingBuilder(1, 1, 1)
-        builder.copy_from(pickle.load(open(path, 'rb')))
-    for dev in builder.devs:
-        if dev and 'meta' not in dev:
-            dev['meta'] = ''
-
-    return builder
-
-
-def _write_ring(ring, ring_path):
-    import cPickle as pickle
-    with open(ring_path, "wb") as fd:
-        pickle.dump(ring.to_dict(), fd, protocol=2)
-
-
-def ring_port(ring_path, node):
-    """Determine correct port from relation settings for a given ring file."""
-    for name in ['account', 'object', 'container']:
-        if name in ring_path:
-            return node[('%s_port' % name)]
-
-
 def initialize_ring(path, part_power, replicas, min_hours):
-    """Initialize a new swift ring with given parameters."""
-    from swift.common.ring import RingBuilder
-    ring = RingBuilder(part_power, replicas, min_hours)
-    _write_ring(ring, path)
+    get_manager().initialize_ring(path, part_power, replicas, min_hours)
 
 
 def exists_in_ring(ring_path, node):
-    ring = _load_builder(ring_path).to_dict()
-    node['port'] = ring_port(ring_path, node)
-
-    for dev in ring['devs']:
-        # Devices in the ring can be None if there are holes from previously
-        # removed devices so skip any that are None.
-        if not dev:
-            continue
-        d = [(i, dev[i]) for i in dev if i in node and i != 'zone']
-        n = [(i, node[i]) for i in node if i in dev and i != 'zone']
-        if sorted(d) == sorted(n):
-            log('Node already exists in ring (%s).' % ring_path, level=INFO)
-            return True
-
-    return False
+    node['port'] = _ring_port(ring_path, node)
+    result = get_manager().exists_in_ring(ring_path, node)
+    if result:
+        log('Node already exists in ring ({}).'
+            .format(ring_path), level=INFO)
+    return result
 
 
 def add_to_ring(ring_path, node):
-    ring = _load_builder(ring_path)
-    port = ring_port(ring_path, node)
+    port = _ring_port(ring_path, node)
 
     # Note: this code used to attempt to calculate new dev ids, but made
     # various assumptions (e.g. in order devices, all devices in the ring
@@ -530,50 +487,16 @@ def add_to_ring(ring_path, node):
         'weight': 100,
         'meta': '',
     }
-    ring.add_dev(new_dev)
-    _write_ring(ring, ring_path)
-    msg = 'Added new device to ring %s: %s' % (ring_path, new_dev)
+    get_manager().add_dev(ring_path, new_dev)
+    msg = 'Added new device to ring {}: {}'.format(ring_path, new_dev)
     log(msg, level=INFO)
 
 
-def _get_zone(ring_builder):
-    replicas = ring_builder.replicas
-    zones = [d['zone'] for d in ring_builder.devs]
-    if not zones:
-        return 1
-
-    # zones is a per-device list, so we may have one
-    # node with 3 devices in zone 1.  For balancing
-    # we need to track the unique zones being used
-    # not necessarily the number of devices
-    unique_zones = list(set(zones))
-    if len(unique_zones) < replicas:
-        return sorted(unique_zones).pop() + 1
-
-    zone_distrib = {}
-    for z in zones:
-        zone_distrib[z] = zone_distrib.get(z, 0) + 1
-
-    if len(set([total for total in zone_distrib.itervalues()])) == 1:
-        # all zones are equal, start assigning to zone 1 again.
-        return 1
-
-    return sorted(zone_distrib, key=zone_distrib.get).pop(0)
-
-
-def get_min_part_hours(ring):
-    builder = _load_builder(ring)
-    return builder.min_part_hours
-
-
-def set_min_part_hours(path, value):
-    cmd = ['swift-ring-builder', path, 'set_min_part_hours', str(value)]
-    p = subprocess.Popen(cmd)
-    p.communicate()
-    rc = p.returncode
-    if rc != 0:
-        msg = ("Failed to set min_part_hours=%s on %s" % (value, path))
-        raise SwiftProxyCharmException(msg)
+def _ring_port(ring_path, node):
+    """Determine correct port from relation settings for a given ring file."""
+    for name in ['account', 'object', 'container']:
+        if name in ring_path:
+            return node[('{}_port'.format(name))]
 
 
 def get_zone(assignment_policy):
@@ -587,18 +510,20 @@ def get_zone(assignment_policy):
     of zones equal to the configured minimum replicas.  This allows for a
     single swift-storage service unit, with each 'add-unit'd machine unit
     being assigned to a different zone.
+
+    :param assignment_policy: <string> the policy
+    :returns: <integer> zone id
     """
     if assignment_policy == 'manual':
         return relation_get('zone')
     elif assignment_policy == 'auto':
-        potential_zones = []
-        for ring in SWIFT_RINGS.itervalues():
-            builder = _load_builder(ring)
-            potential_zones.append(_get_zone(builder))
+        _manager = get_manager()
+        potential_zones = [_manager.get_zone(ring_path)
+                           for ring_path in SWIFT_RINGS.values()]
         return set(potential_zones).pop()
     else:
-        msg = ('Invalid zone assignment policy: %s' % assignment_policy)
-        raise SwiftProxyCharmException(msg)
+        raise SwiftProxyCharmException(
+            'Invalid zone assignment policy: {}'.format(assignment_policy))
 
 
 def balance_ring(ring_path):
@@ -607,27 +532,28 @@ def balance_ring(ring_path):
     Returns True if it needs redistribution.
     """
     # shell out to swift-ring-builder instead, since the balancing code there
-    # does a bunch of un-importable validation.'''
+    # does a bunch of un-importable validation.
     cmd = ['swift-ring-builder', ring_path, 'rebalance']
-    p = subprocess.Popen(cmd)
-    p.communicate()
-    rc = p.returncode
-    if rc == 0:
-        return True
+    try:
+        subprocess.check_call(cmd)
+    except subprocess.CalledProcessError as e:
+        if e.returncode == 1:
+            # Ring builder exit-code=1 is supposed to indicate warning but I
+            # have noticed that it can also return 1 with the following sort of
+            # message:
+            #
+            #   NOTE: Balance of 166.67 indicates you should push this ring,
+            #         wait at least 0 hours, and rebalance/repush.
+            #
+            # This indicates that a balance has occurred and a resync would be
+            # required so not sure why 1 is returned in this case.
+            return False
 
-    if rc == 1:
-        # Ring builder exit-code=1 is supposed to indicate warning but I have
-        # noticed that it can also return 1 with the following sort of message:
-        #
-        #   NOTE: Balance of 166.67 indicates you should push this ring, wait
-        #         at least 0 hours, and rebalance/repush.
-        #
-        # This indicates that a balance has occurred and a resync would be
-        # required so not sure why 1 is returned in this case.
-        return False
+        raise SwiftProxyCharmException(
+            'balance_ring: {} returned {}'.format(cmd, e.returncode))
 
-    msg = ('balance_ring: %s returned %s' % (cmd, rc))
-    raise SwiftProxyCharmException(msg)
+    # return True if it needs redistribution
+    return True
 
 
 def should_balance(rings):
@@ -649,7 +575,7 @@ def do_openstack_upgrade(configs):
     new_src = config('openstack-origin')
     new_os_rel = get_os_codename_install_source(new_src)
 
-    log('Performing OpenStack upgrade to %s.' % (new_os_rel), level=DEBUG)
+    log('Performing OpenStack upgrade to {}.'.format(new_os_rel), level=DEBUG)
     configure_installation_source(new_src)
     dpkg_opts = [
         '--option', 'Dpkg::Options::=--force-confnew',
@@ -692,7 +618,7 @@ def sync_proxy_rings(broker_url, builders=True, rings=True):
     Note that we sync the ring builder and .gz files since the builder itself
     is linked to the underlying .gz ring.
     """
-    log('Fetching swift rings & builders from proxy @ %s.' % broker_url,
+    log('Fetching swift rings & builders from proxy @ {}.'.format(broker_url),
         level=DEBUG)
     target = SWIFT_CONF_DIR
     synced = []
@@ -700,18 +626,18 @@ def sync_proxy_rings(broker_url, builders=True, rings=True):
     try:
         for server in ['account', 'object', 'container']:
             if builders:
-                url = '%s/%s.builder' % (broker_url, server)
-                log('Fetching %s.' % url, level=DEBUG)
-                builder = "%s.builder" % (server)
+                url = '{}/{}.builder'.format(broker_url, server)
+                log('Fetching {}.'.format(url), level=DEBUG)
+                builder = "{}.builder".format(server)
                 cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
                        os.path.join(tmpdir, builder)]
                 subprocess.check_call(cmd)
                 synced.append(builder)
 
             if rings:
-                url = '%s/%s.%s' % (broker_url, server, SWIFT_RING_EXT)
-                log('Fetching %s.' % url, level=DEBUG)
-                ring = '%s.%s' % (server, SWIFT_RING_EXT)
+                url = '{}/{}.{}'.format(broker_url, server, SWIFT_RING_EXT)
+                log('Fetching {}.'.format(url), level=DEBUG)
+                ring = '{}.{}'.format(server, SWIFT_RING_EXT)
                 cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
                        os.path.join(tmpdir, ring)]
                 subprocess.check_call(cmd)
@@ -745,9 +671,9 @@ def update_www_rings(rings=True, builders=True):
         return
 
     tmp_dir = tempfile.mkdtemp(prefix='swift-rings-www-tmp')
-    for ring, builder_path in SWIFT_RINGS.iteritems():
+    for ring, builder_path in SWIFT_RINGS.items():
         if rings:
-            ringfile = '%s.%s' % (ring, SWIFT_RING_EXT)
+            ringfile = '{}.{}'.format(ring, SWIFT_RING_EXT)
             src = os.path.join(SWIFT_CONF_DIR, ringfile)
             dst = os.path.join(tmp_dir, ringfile)
             shutil.copyfile(src, dst)
@@ -758,7 +684,7 @@ def update_www_rings(rings=True, builders=True):
             shutil.copyfile(src, dst)
 
     www_dir = get_www_dir()
-    deleted = "%s.deleted" % (www_dir)
+    deleted = "{}.deleted".format(www_dir)
     ensure_www_dir_permissions(tmp_dir)
     os.rename(www_dir, deleted)
     os.rename(tmp_dir, www_dir)
@@ -768,8 +694,9 @@ def update_www_rings(rings=True, builders=True):
 def get_rings_checksum():
     """Returns sha256 checksum for rings in /etc/swift."""
     sha = hashlib.sha256()
-    for ring in SWIFT_RINGS.iterkeys():
-        path = os.path.join(SWIFT_CONF_DIR, '%s.%s' % (ring, SWIFT_RING_EXT))
+    for ring in SWIFT_RINGS.keys():
+        path = os.path.join(SWIFT_CONF_DIR, '{}.{}'
+                            .format(ring, SWIFT_RING_EXT))
         if not os.path.isfile(path):
             continue
 
@@ -782,7 +709,7 @@ def get_rings_checksum():
 def get_builders_checksum():
     """Returns sha256 checksum for builders in /etc/swift."""
     sha = hashlib.sha256()
-    for builder in SWIFT_RINGS.itervalues():
+    for builder in SWIFT_RINGS.values():
         if not os.path.exists(builder):
             continue
 
@@ -819,6 +746,7 @@ def sync_builders_and_rings_if_changed(f):
     """Only trigger a ring or builder sync if they have changed as a result of
     the decorated operation.
     """
+    @functools.wraps(f)
     def _inner_sync_builders_and_rings_if_changed(*args, **kwargs):
         if not is_elected_leader(SWIFT_HA_RES):
             log("Sync rings called by non-leader - skipping", level=WARNING)
@@ -840,8 +768,8 @@ def sync_builders_and_rings_if_changed(f):
             rings_after = get_rings_checksum()
             builders_after = get_builders_checksum()
 
-            rings_path = os.path.join(SWIFT_CONF_DIR, '*.%s' %
-                                      (SWIFT_RING_EXT))
+            rings_path = os.path.join(SWIFT_CONF_DIR, '*.{}'
+                                      .format(SWIFT_RING_EXT))
             rings_ready = len(glob.glob(rings_path)) == len(SWIFT_RINGS)
             rings_changed = ((rings_after != rings_before) or
                              not previously_synced())
@@ -867,7 +795,7 @@ def sync_builders_and_rings_if_changed(f):
 
 
 @sync_builders_and_rings_if_changed
-def update_rings(nodes=[], min_part_hours=None):
+def update_rings(nodes=None, min_part_hours=None):
     """Update builder with node settings and balance rings if necessary.
 
     Also update min_part_hours if provided.
@@ -883,12 +811,12 @@ def update_rings(nodes=[], min_part_hours=None):
         # only the builder.
 
         # Only update if all exist
-        if all([os.path.exists(p) for p in SWIFT_RINGS.itervalues()]):
-            for ring, path in SWIFT_RINGS.iteritems():
+        if all(os.path.exists(p) for p in SWIFT_RINGS.values()):
+            for ring, path in SWIFT_RINGS.items():
                 current_min_part_hours = get_min_part_hours(path)
                 if min_part_hours != current_min_part_hours:
-                    log("Setting ring %s min_part_hours to %s" %
-                        (ring, min_part_hours), level=INFO)
+                    log("Setting ring {} min_part_hours to {}"
+                        .format(ring, min_part_hours), level=INFO)
                     try:
                         set_min_part_hours(path, min_part_hours)
                     except SwiftProxyCharmException as exc:
@@ -899,14 +827,33 @@ def update_rings(nodes=[], min_part_hours=None):
                     else:
                         balance_required = True
 
-    for node in nodes:
-        for ring in SWIFT_RINGS.itervalues():
-            if not exists_in_ring(ring, node):
-                add_to_ring(ring, node)
-                balance_required = True
+    if nodes is not None:
+        for node in nodes:
+            for ring in SWIFT_RINGS.values():
+                if not exists_in_ring(ring, node):
+                    add_to_ring(ring, node)
+                    balance_required = True
 
     if balance_required:
         balance_rings()
+
+
+def get_min_part_hours(path):
+    """Just a proxy to the manager.py:get_min_part_hours() function
+
+    :param path: the path to get the min_part_hours for
+    :returns: integer
+    """
+    return get_manager().get_min_part_hours(path)
+
+
+def set_min_part_hours(path, value):
+    cmd = ['swift-ring-builder', path, 'set_min_part_hours', str(value)]
+    try:
+        subprocess.check_call(cmd)
+    except subprocess.CalledProcessError:
+        raise SwiftProxyCharmException(
+            "Failed to set min_part_hours={} on {}".format(value, path))
 
 
 @sync_builders_and_rings_if_changed
@@ -916,19 +863,19 @@ def balance_rings():
         log("Balance rings called by non-leader - skipping", level=WARNING)
         return
 
-    if not should_balance([r for r in SWIFT_RINGS.itervalues()]):
+    if not should_balance([r for r in SWIFT_RINGS.values()]):
         log("Not yet ready to balance rings - insufficient replicas?",
             level=INFO)
         return
 
     rebalanced = False
     log("Rebalancing rings", level=INFO)
-    for path in SWIFT_RINGS.itervalues():
+    for path in SWIFT_RINGS.values():
         if balance_ring(path):
-            log('Balanced ring %s' % path, level=DEBUG)
+            log('Balanced ring {}'.format(path), level=DEBUG)
             rebalanced = True
         else:
-            log('Ring %s not rebalanced' % path, level=DEBUG)
+            log('Ring {} not rebalanced'.format(path), level=DEBUG)
 
     if not rebalanced:
         log("Rings unchanged by rebalance", level=DEBUG)
@@ -940,10 +887,10 @@ def mark_www_rings_deleted():
     storage units won't see them.
     """
     www_dir = get_www_dir()
-    for ring, _ in SWIFT_RINGS.iteritems():
-        path = os.path.join(www_dir, '%s.ring.gz' % ring)
+    for ring in SWIFT_RINGS.keys():
+        path = os.path.join(www_dir, '{}.ring.gz'.format(ring))
         if os.path.exists(path):
-            os.rename(path, "%s.deleted" % (path))
+            os.rename(path, "{}.deleted".format(path))
 
 
 def notify_peers_builders_available(broker_token, builders_only=False):
@@ -967,16 +914,17 @@ def notify_peers_builders_available(broker_token, builders_only=False):
         return
 
     if builders_only:
-        type = "builders"
+        _type = "builders"
     else:
-        type = "builders & rings"
+        _type = "builders & rings"
 
     # Notify peers that builders are available
-    log("Notifying peer(s) that %s are ready for sync." % type, level=INFO)
+    log("Notifying peer(s) that {} are ready for sync."
+        .format(_type), level=INFO)
     rq = SwiftProxyClusterRPC().sync_rings_request(broker_token,
                                                    builders_only=builders_only)
     for rid in cluster_rids:
-        log("Notifying rid=%s (%s)" % (rid, rq), level=DEBUG)
+        log("Notifying rid={} ({})".format(rid, rq), level=DEBUG)
         relation_set(relation_id=rid, relation_settings=rq)
 
 
@@ -1053,7 +1001,7 @@ def notify_storage_rings_available():
     hostname = get_hostaddr()
     hostname = format_ipv6_addr(hostname) or hostname
     path = os.path.basename(get_www_dir())
-    rings_url = 'http://%s/%s' % (hostname, path)
+    rings_url = 'http://{}/{}'.format(hostname, path)
     trigger = uuid.uuid4()
     # Notify storage nodes that there is a new ring to fetch.
     log("Notifying storage nodes that new rings are ready for sync.",
@@ -1069,17 +1017,17 @@ def fully_synced():
     Returns True if we have all rings and builders.
     """
     not_synced = []
-    for ring, builder in SWIFT_RINGS.iteritems():
+    for ring, builder in SWIFT_RINGS.items():
         if not os.path.exists(builder):
             not_synced.append(builder)
 
         ringfile = os.path.join(SWIFT_CONF_DIR,
-                                '%s.%s' % (ring, SWIFT_RING_EXT))
+                                '{}.{}'.format(ring, SWIFT_RING_EXT))
         if not os.path.exists(ringfile):
             not_synced.append(ringfile)
 
     if not_synced:
-        log("Not yet synced: %s" % ', '.join(not_synced), level=INFO)
+        log("Not yet synced: {}".format(', '.join(not_synced), level=INFO))
         return False
 
     return True
@@ -1120,21 +1068,85 @@ def timestamps_available(excluded_unit):
     return False
 
 
-def has_minimum_zones(rings):
-    """Determine if enough zones exist to satisfy minimum replicas"""
-    for ring in rings:
-        if not os.path.isfile(ring):
-            return False
-        builder = _load_builder(ring).to_dict()
-        replicas = builder['replicas']
-        zones = [dev['zone'] for dev in builder['devs'] if dev]
-        num_zones = len(set(zones))
-        if num_zones < replicas:
-            log("Not enough zones (%d) defined to satisfy minimum replicas "
-                "(need >= %d)" % (num_zones, replicas), level=INFO)
-            return False
+def get_manager():
+    return ManagerProxy()
 
-    return True
+
+class ManagerProxy(object):
+
+    def __init__(self, path=None):
+        self._path = path or []
+
+    def __getattribute__(self, attr):
+        if attr in ['__class__', '_path', 'api_version']:
+            return super().__getattribute__(attr)
+        return self.__class__(path=self._path + [attr])
+
+    def __call__(self, *args, **kwargs):
+        # Following line retained commented-out for future debugging
+        # print("Called: {} ({}, {})".format(self._path, args, kwargs))
+        return _proxy_manager_call(self._path, args, kwargs)
+
+
+JSON_ENCODE_OPTIONS = dict(
+    sort_keys=True,
+    allow_nan=False,
+    indent=None,
+    separators=(',', ':'),
+)
+
+
+def _proxy_manager_call(path, args, kwargs):
+    package = dict(path=path,
+                   args=args,
+                   kwargs=kwargs)
+    serialized = json.dumps(package, **JSON_ENCODE_OPTIONS)
+    script = os.path.abspath(os.path.join(os.path.dirname(__file__),
+                                          '..',
+                                          'swift_manager',
+                                          'manager.py'))
+    env = os.environ
+    try:
+        if sys.version_info < (3, 5):
+            # remove this after trusty support is removed.  No subprocess.run
+            # in Python 3.4
+            process = subprocess.Popen([script, serialized],
+                                       stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE,
+                                       env=env)
+            out, err = process.communicate()
+            result = json.loads(out.decode('UTF-8'))
+        else:
+            completed = subprocess.run([script, serialized],
+                                       stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE,
+                                       env=env)
+            result = json.loads(completed.stdout.decode('UTF-8'))
+        if 'error' in result:
+            s = ("The call within manager.py failed with the error: '{}'. "
+                 "The call was: path={}, args={}, kwargs={}"
+                 .format(result['error'], path, args, kwargs))
+            log(s, level=ERROR)
+            raise RuntimeError(s)
+        return result['result']
+    except subprocess.CalledProcessError as e:
+        s = ("manger.py failed when called with path={}, args={}, kwargs={},"
+             " with the error: {}".format(path, args, kwargs, str(e)))
+        log(s, level=ERROR)
+        if sys.version_info < (3, 5):
+            # remove this after trusty support is removed.
+            log("stderr was:\n{}\n".format(err.decode('UTF-8')),
+                level=ERROR)
+        else:
+            log("stderr was:\n{}\n".format(completed.stderr.decode('UTF-8')),
+                level=ERROR)
+        raise RuntimeError(s)
+    except Exception as e:
+        s = ("Decoding the result from the call to manager.py resulted in "
+             "error '{}' (command: path={}, args={}, kwargs={}"
+             .format(str(e), path, args, kwargs))
+        log(s, level=ERROR)
+        raise RuntimeError(s)
 
 
 def customer_check_assess_status(configs):
@@ -1155,7 +1167,7 @@ def customer_check_assess_status(configs):
         return ('blocked', 'Not enough related storage nodes')
 
     # Verify there are enough storage zones to satisfy minimum replicas
-    rings = [r for r in SWIFT_RINGS.itervalues()]
+    rings = [r for r in SWIFT_RINGS.values()]
     if not has_minimum_zones(rings):
         return ('blocked', 'Not enough storage zones for minimum replicas')
 
@@ -1167,9 +1179,23 @@ def customer_check_assess_status(configs):
                 if not is_ipv6(addr):
                     return ('blocked',
                             'Did not get IPv6 address from '
-                            'storage relation (got=%s)' % (addr))
+                            'storage relation (got={})'.format(addr))
 
     return 'active', 'Unit is ready'
+
+
+def has_minimum_zones(rings):
+    """Determine if enough zones exist to satisfy minimum replicas
+
+    Uses manager.py as it accesses the ring_builder object in swift
+
+    :param rings: the list of ring_paths to check
+    :returns: Boolean
+    """
+    result = get_manager().has_minimum_zones(rings)
+    if 'log' in result:
+        log(result['log'], level=result['level'])
+    return result['result']
 
 
 def assess_status(configs, check_services=None):

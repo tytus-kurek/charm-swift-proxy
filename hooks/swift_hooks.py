@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 #
 # Copyright 2016 Canonical Ltd
 #
@@ -13,15 +13,26 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import os
 import sys
-import time
-
 from subprocess import (
     check_call,
     CalledProcessError,
 )
+import time
+
+
+_path = os.path.dirname(os.path.realpath(__file__))
+_parent = os.path.abspath(os.path.join(_path, '..'))
+
+
+def _add_path(path):
+    if path not in sys.path:
+        sys.path.insert(1, path)
+
+
+_add_path(_parent)
+
 
 from lib.swift_utils import (
     SwiftProxyCharmException,
@@ -149,7 +160,7 @@ def config_changed():
     if is_elected_leader(SWIFT_HA_RES):
         log("Leader established, generating ring builders", level=INFO)
         # initialize new storage rings.
-        for path in SWIFT_RINGS.itervalues():
+        for path in SWIFT_RINGS.values():
             if not os.path.exists(path):
                 initialize_ring(path,
                                 config('partition-power'),
@@ -195,18 +206,16 @@ def config_changed():
 @hooks.hook('identity-service-relation-joined')
 def keystone_joined(relid=None):
     port = config('bind-port')
-    admin_url = '%s:%s' % (canonical_url(CONFIGS, ADMIN), port)
-    internal_url = ('%s:%s/v1/AUTH_$(tenant_id)s' %
-                    (canonical_url(CONFIGS, INTERNAL), port))
-    public_url = ('%s:%s/v1/AUTH_$(tenant_id)s' %
-                  (canonical_url(CONFIGS, PUBLIC), port))
+    admin_url = '{}:{}'.format(canonical_url(CONFIGS, ADMIN), port)
+    internal_url = ('{}:{}/v1/AUTH_$(tenant_id)s'
+                    .format(canonical_url(CONFIGS, INTERNAL), port))
+    public_url = ('{}:{}/v1/AUTH_$(tenant_id)s'
+                  .format(canonical_url(CONFIGS, PUBLIC), port))
     region = config('region')
 
-    s3_public_url = ('%s:%s' %
-                     (canonical_url(CONFIGS, PUBLIC), port))
-    s3_internal_url = ('%s:%s' %
-                       (canonical_url(CONFIGS, INTERNAL), port))
-    s3_admin_url = '%s:%s' % (canonical_url(CONFIGS, ADMIN), port)
+    s3_public_url = ('{}:{}'.format(canonical_url(CONFIGS, PUBLIC), port))
+    s3_internal_url = ('{}:{}'.format(canonical_url(CONFIGS, INTERNAL), port))
+    s3_admin_url = '{}:{}'.format(canonical_url(CONFIGS, ADMIN), port)
 
     relation_set(relation_id=relid,
                  region=None, public_url=None,
@@ -257,7 +266,7 @@ def get_host_ip(rid=None, unit=None):
             return host_ip
         else:
             msg = ("Did not get IPv6 address from storage relation "
-                   "(got=%s)" % (addr))
+                   "(got={})".format(addr))
             log(msg, level=WARNING)
 
     return openstack.get_host_ip(addr)
@@ -277,7 +286,7 @@ def update_rsync_acls():
             hosts.append(get_host_ip(rid=rid, unit=unit))
 
     rsync_hosts = ' '.join(hosts)
-    log("Broadcasting acl '%s' to all storage units" % (rsync_hosts),
+    log("Broadcasting acl '{}' to all storage units".format(rsync_hosts),
         level=DEBUG)
     # We add a timestamp so that the storage units know which is the newest
     settings = {'rsync_allowed_hosts': rsync_hosts,
@@ -317,10 +326,10 @@ def storage_changed():
         'container_port': relation_get('container_port'),
     }
 
-    if None in node_settings.itervalues():
-        missing = [k for k, v in node_settings.iteritems() if v is None]
+    if None in node_settings.values():
+        missing = [k for k, v in node_settings.items() if v is None]
         log("Relation not ready - some required values not provided by "
-            "relation (missing=%s)" % (', '.join(missing)), level=INFO)
+            "relation (missing={})".format(', '.join(missing)), level=INFO)
         return None
 
     for k in ['zone', 'account_port', 'object_port', 'container_port']:
@@ -391,9 +400,8 @@ def is_all_peers_stopped(responses):
     ack_key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK
     token = relation_get(attribute=rq_key, unit=local_unit())
     if not token or token != responses[0].get(ack_key):
-        log("Token mismatch, rq and ack tokens differ (expected ack=%s, "
-            "got=%s)" %
-            (token, responses[0].get(ack_key)), level=DEBUG)
+        log("Token mismatch, rq and ack tokens differ (expected ack={}, "
+            "got={})".format(token, responses[0].get(ack_key)), level=DEBUG)
         return False
 
     if not all_responses_equal(responses, ack_key):
@@ -410,7 +418,7 @@ def cluster_leader_actions():
 
     NOTE: must be called by leader from cluster relation hook.
     """
-    log("Cluster changed by unit=%s (local is leader)" % (remote_unit()),
+    log("Cluster changed by unit={} (local is leader)".format(remote_unit()),
         level=DEBUG)
 
     rx_settings = relation_get() or {}
@@ -438,7 +446,7 @@ def cluster_leader_actions():
     resync_request_ack_key = SwiftProxyClusterRPC.KEY_REQUEST_RESYNC_ACK
     tx_resync_request_ack = tx_settings.get(resync_request_ack_key)
     if rx_resync_request and tx_resync_request_ack != rx_resync_request:
-        log("Unit '%s' has requested a resync" % (remote_unit()),
+        log("Unit '{}' has requested a resync".format(remote_unit()),
             level=INFO)
         cluster_sync_rings(peers_only=True)
         relation_set(**{resync_request_ack_key: rx_resync_request})
@@ -462,20 +470,20 @@ def cluster_leader_actions():
             key = 'peers-only'
             if not all_responses_equal(responses, key, must_exist=False):
                 msg = ("Did not get equal response from every peer unit for "
-                       "'%s'" % (key))
+                       "'{}'".format(key))
                 raise SwiftProxyCharmException(msg)
 
             peers_only = bool(get_first_available_value(responses, key,
                                                         default=0))
-            log("Syncing rings and builders (peers-only=%s)" % (peers_only),
-                level=DEBUG)
+            log("Syncing rings and builders (peers-only={})"
+                .format(peers_only), level=DEBUG)
             broadcast_rings_available(broker_token=rx_ack_token,
                                       storage=not peers_only)
         else:
             key = SwiftProxyClusterRPC.KEY_STOP_PROXY_SVC_ACK
             acks = ', '.join([rsp[key] for rsp in responses if key in rsp])
             log("Not all peer apis stopped - skipping sync until all peers "
-                "ready (current='%s', token='%s')" % (acks, tx_ack_token),
+                "ready (current='{}', token='{}')".format(acks, tx_ack_token),
                 level=INFO)
     elif ((rx_ack_token and (rx_ack_token == tx_ack_token)) or
           (rx_rq_token and (rx_rq_token == rx_ack_token))):
@@ -486,13 +494,13 @@ def cluster_leader_actions():
         if broker:
             # If we get here, manual intervention will be required in order
             # to restore the cluster.
-            msg = ("Failed to restore previous broker '%s' as leader" %
-                   (broker))
-            raise SwiftProxyCharmException(msg)
+            raise SwiftProxyCharmException(
+                "Failed to restore previous broker '{}' as leader"
+                .format(broker))
         else:
-            msg = ("No builder-broker on rx_settings relation from '%s' - "
-                   "unable to attempt leader restore" % (remote_unit()))
-            raise SwiftProxyCharmException(msg)
+            raise SwiftProxyCharmException(
+                "No builder-broker on rx_settings relation from '{}' - "
+                "unable to attempt leader restore".format(remote_unit()))
     else:
         log("Not taking any sync actions", level=DEBUG)
 
@@ -504,8 +512,8 @@ def cluster_non_leader_actions():
 
     NOTE: must be called by non-leader from cluster relation hook.
     """
-    log("Cluster changed by unit=%s (local is non-leader)" % (remote_unit()),
-        level=DEBUG)
+    log("Cluster changed by unit={} (local is non-leader)"
+        .format(remote_unit()), level=DEBUG)
     rx_settings = relation_get() or {}
     tx_settings = relation_get(unit=local_unit()) or {}
 
@@ -522,8 +530,8 @@ def cluster_non_leader_actions():
 
     # Check whether we have been requested to stop proxy service
     if rx_rq_token:
-        log("Peer request to stop proxy service received (%s) - sending ack" %
-            (rx_rq_token), level=INFO)
+        log("Peer request to stop proxy service received ({}) - sending ack"
+            .format(rx_rq_token), level=INFO)
         service_stop('swift-proxy')
         peers_only = rx_settings.get('peers-only', None)
         rq = SwiftProxyClusterRPC().stop_proxy_ack(echo_token=rx_rq_token,
@@ -545,12 +553,12 @@ def cluster_non_leader_actions():
     elif broker_token:
         if tx_ack_token:
             if broker_token == tx_ack_token:
-                log("Broker and ACK tokens match (%s)" % (broker_token),
+                log("Broker and ACK tokens match ({})".format(broker_token),
                     level=DEBUG)
             else:
                 log("Received ring/builder update notification but tokens do "
-                    "not match (broker-token=%s/ack-token=%s)" %
-                    (broker_token, tx_ack_token), level=WARNING)
+                    "not match (broker-token={}/ack-token={})"
+                    .format(broker_token, tx_ack_token), level=WARNING)
                 return
         else:
             log("Broker token available without handshake, assuming we just "
@@ -576,7 +584,7 @@ def cluster_non_leader_actions():
     builders_only = int(rx_settings.get('sync-only-builders', 0))
     path = os.path.basename(get_www_dir())
     try:
-        sync_proxy_rings('http://%s/%s' % (broker, path),
+        sync_proxy_rings('http://{}/{}'.format(broker, path),
                          rings=not builders_only)
     except CalledProcessError:
         log("Ring builder sync failed, builders not yet available - "
@@ -647,8 +655,9 @@ def ha_relation_joined(relation_id=None):
                     if vip not in resource_params[vip_key]:
                         vip_key = '{}_{}'.format(vip_key, vip_params)
                     else:
-                        log("Resource '%s' (vip='%s') already exists in "
-                            "vip group - skipping" % (vip_key, vip), WARNING)
+                        log("Resource '{}' (vip='{}') already exists in "
+                            "vip group - skipping".format(vip_key, vip),
+                            WARNING)
                         continue
 
                 resources[vip_key] = res_swift_vip

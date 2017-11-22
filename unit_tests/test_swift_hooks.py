@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import sys
 import uuid
 
@@ -23,24 +24,25 @@ from mock import (
     MagicMock,
 )
 
-sys.path.append("hooks")
-
 # python-apt is not installed as part of test-requirements but is imported by
 # some charmhelpers modules so create a fake import.
 sys.modules['apt'] = MagicMock()
 sys.modules['apt_pkg'] = MagicMock()
 
-with patch('hooks.charmhelpers.contrib.hardening.harden.harden') as mock_dec, \
-        patch('hooks.charmhelpers.core.hookenv.log'):
+with patch('charmhelpers.contrib.hardening.harden.harden') as mock_dec, \
+        patch('charmhelpers.core.hookenv.log'), \
+        patch('lib.swift_utils.register_configs'):
     mock_dec.side_effect = (lambda *dargs, **dkwargs: lambda f:
                             lambda *args, **kwargs: f(*args, **kwargs))
-    import swift_hooks
+    import hooks.swift_hooks as swift_hooks
+    importlib.reload(swift_hooks)
 
 
+# @unittest.skip("debugging ...")
 class SwiftHooksTestCase(unittest.TestCase):
 
-    @patch("swift_hooks.relation_get")
-    @patch("swift_hooks.local_unit")
+    @patch.object(swift_hooks, "relation_get")
+    @patch.object(swift_hooks, "local_unit")
     def test_is_all_peers_stopped(self, mock_local_unit, mock_relation_get):
         token1 = str(uuid.uuid4())
         token2 = str(uuid.uuid4())
