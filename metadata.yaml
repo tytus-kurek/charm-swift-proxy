@@ -19,8 +19,8 @@ tags:
   - cache-proxy
 series:
   - xenial
+  - bionic
   - artful
-  - zesty
   - trusty
 extra-bindings:
   public:
