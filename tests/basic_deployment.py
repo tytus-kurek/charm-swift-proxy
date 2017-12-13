@@ -475,6 +475,16 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                 ' proxy-logging proxy-server'
             }
 
+        s3_token_auth_settings_legacy = {
+            'auth_port': keystone_relation['auth_port'],
+            'auth_host': keystone_relation['auth_host'],
+            'service_host': keystone_relation['service_host'],
+            'service_port': keystone_relation['service_port'],
+            'auth_protocol': keystone_relation['auth_protocol'],
+            'auth_token': keystone_relation['admin_token'],
+            'admin_token': keystone_relation['admin_token']
+        }
+
         if self._get_openstack_release() >= self.trusty_kilo:
             # Kilo and later
             expected['filter:authtoken'].update({
@@ -503,13 +513,17 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                 })
             expected['filter:s3token'] = {
                 # No section commonality with J and earlier
-                'paste.filter_factory': 'keystonemiddleware.s3_token'
+                'paste.filter_factory': 'keystoneclient.middleware.s3_token'
                                         ':filter_factory',
-                'auth_uri': '{}://{}:{}'.format(
-                    auth_protocol,
-                    auth_host,
-                    keystone_relation['auth_port']),
             }
+            expected['filter:s3token'].update(s3_token_auth_settings_legacy)
+
+            if self._get_openstack_release() >= self.trusty_mitaka:
+                expected['filter:s3token']['paste.filter_factory'] = \
+                    'keystonemiddleware.s3_token:filter_factory'
+
+            # NOTE(hopem): this will need extending for newer releases once
+            #              swift-plugin-s3 is updated in UCA. See LP: #1738063
         else:
             # Juno and earlier
             expected['filter:authtoken'].update({
@@ -522,15 +536,9 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             expected['filter:s3token'] = {
                 # No section commonality with K and later
                 'paste.filter_factory': 'keystoneclient.middleware.'
-                                        's3_token:filter_factory',
-                'auth_port': keystone_relation['auth_port'],
-                'auth_host': keystone_relation['auth_host'],
-                'service_host': keystone_relation['service_host'],
-                'service_port': keystone_relation['service_port'],
-                'auth_protocol': keystone_relation['auth_protocol'],
-                'auth_token': keystone_relation['admin_token'],
-                'admin_token': keystone_relation['admin_token']
+                's3_token:filter_factory',
             }
+            expected['filter:s3token'].update(s3_token_auth_settings_legacy)
 
         for section, pairs in expected.items():
             ret = u.validate_config_data(unit, conf, section, pairs)
