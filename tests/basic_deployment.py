@@ -16,6 +16,10 @@ import amulet
 import swiftclient
 import time
 
+import keystoneclient
+from keystoneclient.v3 import client as keystone_client_v3
+from keystoneclient.v2_0 import client as keystone_client
+
 from charmhelpers.contrib.openstack.amulet.deployment import (
     OpenStackAmuletDeployment
 )
@@ -106,7 +110,27 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         }
         super(SwiftProxyBasicDeployment, self)._configure_services(configs)
 
-    def _initialize_tests(self):
+    def _init_keystone_admin_client(self, api_version):
+        """Create the keystone admin client based on release and API version"""
+        self.keystone_sentry = self.d.sentry['keystone'][0]
+        keystone_ip = self.keystone_sentry.info['public-address']
+        if self._get_openstack_release() >= self.xenial_queens:
+            api_version = 3
+        client_class = keystone_client.Client
+        if api_version == 3:
+            client_class = keystone_client_v3.Client
+        session, auth = u.get_keystone_session(
+            keystone_ip,
+            api_version=api_version,
+            username='admin',
+            password='openstack',
+            project_name='admin',
+            user_domain_name='admin_domain',
+            project_domain_name='admin_domain')
+        self.keystone = client_class(session=session)
+        self.keystone.auth_ref = auth.get_access(session)
+
+    def _initialize_tests(self, api_version=2):
         """Perform final initialization before tests get run."""
         # Access the sentries for inspecting service units
         self.pxc_sentry = self.d.sentry['percona-cluster'][0]
@@ -121,45 +145,102 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             self._get_openstack_release_string()))
 
         # Authenticate admin with keystone
-        self.keystone = u.authenticate_keystone_admin(self.keystone_sentry,
-                                                      user='admin',
-                                                      password='openstack',
-                                                      tenant='admin')
+        self._init_keystone_admin_client(api_version)
 
         # Authenticate admin with glance endpoint
         self.glance = u.authenticate_glance_admin(self.keystone)
 
-        # Authenticate swift user
+        keystone_ip = self.keystone_sentry.info['public-address']
         keystone_relation = self.keystone_sentry.relation(
             'identity-service', 'swift-proxy:identity-service')
-        ep = self.keystone.service_catalog.url_for(service_type='identity',
-                                                   interface='publicURL')
-        self.swift = swiftclient.Connection(
-            authurl=ep,
-            user=keystone_relation['service_username'],
-            key=keystone_relation['service_password'],
-            tenant_name=keystone_relation['service_tenant'],
-            auth_version='2.0')
 
         # Create a demo tenant/role/user
         self.demo_tenant = 'demoTenant'
         self.demo_role = 'demoRole'
         self.demo_user = 'demoUser'
+        self.demo_project = 'demoProject'
+        self.demo_domain = 'demoDomain'
+
+        if (self._get_openstack_release() >= self.xenial_queens or
+                api_version == 3):
+            self.create_users_v3()
+            self.demo_user_session, _ = u.get_keystone_session(
+                keystone_ip,
+                self.demo_user,
+                'password',
+                api_version=3,
+                user_domain_name=self.demo_domain,
+                project_domain_name=self.demo_domain,
+                project_name=self.demo_project
+            )
+            self.keystone_demo = keystone_client_v3.Client(
+                session=self.demo_user_session)
+            self.service_session, _ = u.get_keystone_session(
+                keystone_ip,
+                keystone_relation['service_username'],
+                keystone_relation['service_password'],
+                api_version=3,
+                user_domain_name=keystone_relation['service_domain'],
+                project_domain_name=keystone_relation['service_domain'],
+                project_name=keystone_relation['service_tenant']
+            )
+        else:
+            self.create_users_v2()
+            # Authenticate demo user with keystone
+            self.keystone_demo = \
+                u.authenticate_keystone_user(
+                    self.keystone, user=self.demo_user,
+                    password='password',
+                    tenant=self.demo_tenant)
+            self.service_session, _ = u.get_keystone_session(
+                keystone_ip,
+                keystone_relation['service_username'],
+                keystone_relation['service_password'],
+                api_version=2,
+                project_name=keystone_relation['service_tenant']
+            )
+        self.swift = swiftclient.Connection(session=self.service_session)
+
+    def create_users_v3(self):
+        try:
+            self.keystone.projects.find(name=self.demo_project)
+        except keystoneclient.exceptions.NotFound:
+            domain = self.keystone.domains.create(
+                self.demo_domain,
+                description='Demo Domain',
+                enabled=True
+            )
+            project = self.keystone.projects.create(
+                self.demo_project,
+                domain,
+                description='Demo Project',
+                enabled=True,
+            )
+            user = self.keystone.users.create(
+                self.demo_user,
+                domain=domain.id,
+                project=self.demo_project,
+                password='password',
+                email='demov3@demo.com',
+                description='Demo',
+                enabled=True)
+            role = self.keystone.roles.find(name='Admin')
+            self.keystone.roles.grant(
+                role.id,
+                user=user.id,
+                project=project.id)
+
+    def create_users_v2(self):
         if not u.tenant_exists(self.keystone, self.demo_tenant):
             tenant = self.keystone.tenants.create(tenant_name=self.demo_tenant,
                                                   description='demo tenant',
                                                   enabled=True)
+
             self.keystone.roles.create(name=self.demo_role)
             self.keystone.users.create(name=self.demo_user,
                                        password='password',
                                        tenant_id=tenant.id,
                                        email='demo@demo.com')
-
-        # Authenticate demo user with keystone
-        self.keystone_demo = \
-            u.authenticate_keystone_user(self.keystone, user=self.demo_user,
-                                         password='password',
-                                         tenant=self.demo_tenant)
 
     def test_100_services(self):
         """Verify the expected services are running on the corresponding
@@ -193,36 +274,6 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         if ret:
             amulet.raise_status(amulet.FAIL, msg=ret)
 
-    def test_102_users(self):
-        """Verify all existing roles."""
-        u.log.debug('Checking keystone users...')
-        user1 = {'name': 'demoUser',
-                 'enabled': True,
-                 'tenantId': u.not_null,
-                 'id': u.not_null,
-                 'email': 'demo@demo.com'}
-        user2 = {'name': 'admin',
-                 'enabled': True,
-                 'tenantId': u.not_null,
-                 'id': u.not_null,
-                 'email': 'juju@localhost'}
-        user3 = {'name': 'glance',
-                 'enabled': True,
-                 'tenantId': u.not_null,
-                 'id': u.not_null,
-                 'email': u'juju@localhost'}
-        user4 = {'name': 's3_swift',
-                 'enabled': True,
-                 'tenantId': u.not_null,
-                 'id': u.not_null,
-                 'email': u'juju@localhost'}
-        expected = [user1, user2, user3, user4]
-        actual = self.keystone.users.list()
-
-        ret = u.validate_user_data(expected, actual)
-        if ret:
-            amulet.raise_status(amulet.FAIL, msg=ret)
-
     def test_104_keystone_service_catalog(self):
         """Verify that the service catalog endpoint data is valid."""
         u.log.debug('Checking keystone service catalog...')
@@ -234,29 +285,14 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
 
         expected = {'image': [endpoint_id], 'object-store': [endpoint_id],
                     'identity': [endpoint_id], 's3': [endpoint_id]}
-        actual = self.keystone_demo.service_catalog.get_endpoints()
+        actual = self.keystone.service_catalog.get_endpoints()
 
-        ret = u.validate_svc_catalog_endpoint_data(expected, actual)
+        ret = u.validate_svc_catalog_endpoint_data(
+            expected, actual,
+            openstack_release=self._get_openstack_release()
+        )
         if ret:
             amulet.raise_status(amulet.FAIL, msg=ret)
-
-    def test_106_swift_object_store_endpoint(self):
-        """Verify the swift object-store endpoint data."""
-        u.log.debug('Checking keystone endpoint for swift object store...')
-        endpoints = self.keystone.endpoints.list()
-        admin_port = internal_port = public_port = '8080'
-        expected = {'id': u.not_null,
-                    'region': 'RegionOne',
-                    'adminurl': u.valid_url,
-                    'internalurl': u.valid_url,
-                    'publicurl': u.valid_url,
-                    'service_id': u.not_null}
-
-        ret = u.validate_endpoint_data(endpoints, admin_port, internal_port,
-                                       public_port, expected)
-        if ret:
-            message = 'object-store endpoint: {}'.format(ret)
-            amulet.raise_status(amulet.FAIL, msg=message)
 
     def test_200_swift_proxy_identity_service_relation(self):
         """Verify the swift-proxy to keystone identity relation data."""
@@ -385,8 +421,12 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             message = "swift config error: {}".format(ret)
             amulet.raise_status(amulet.FAIL, msg=message)
 
-    def test_302_proxy_server_config(self, auth_api_version='2.0'):
+    def test_302_proxy_server_config(self, auth_api_version=None):
         """Verify the data in the proxy-server config file."""
+        if self._get_openstack_release() >= self.xenial_queens:
+            auth_api_version = auth_api_version or '3'
+        else:
+            auth_api_version = auth_api_version or '2.0'
         u.log.debug("Checking swift proxy-server config auth_api_version={}..."
                     "".format(auth_api_version))
         unit = self.swift_proxy_sentry
@@ -628,6 +668,9 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
     def test_keystone_v3(self):
         """Verify that the service is configured and operates correctly when
            using Keystone v3 auth."""
+        if self._get_openstack_release() >= self.xenial_queens:
+            u.log.info('Skipping keystone v3 test for queens or later')
+            return
         os_release = self._get_openstack_release_string()
         if CompareOpenStackReleases(os_release) < 'kilo':
             u.log.info('Skipping test, {} < kilo'.format(os_release))
@@ -638,6 +681,13 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             msg = "Unable to set auth_api_version to '3'"
             amulet.raise_status(amulet.FAIL, msg=msg)
             return
+        if self._get_openstack_release() >= self.trusty_mitaka:
+            # NOTE(jamespage):
+            # Re-init tests to create v3 versions of glance, swift and
+            # keystone clients for mitaka or later, where glance uses
+            # v3 to access backend swift services.  Early v3 deployments
+            # still use v2 credentials in glance for swift access.
+            self._initialize_tests(api_version=3)
         self.test_302_proxy_server_config(auth_api_version='3')
         self.test_400_swift_backed_image_create()
 
