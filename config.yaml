@@ -354,3 +354,20 @@ options:
       Sample rate determines what percentage of the metric points a
       client should send to the server.
       Only takes effect if statsd-host is set.
+  static-large-object-segments:
+    default: 0
+    type: int
+    description: |
+      Enable Static Large Objects (SLO) support. This allows the user to
+      upload several object segments concurrently, after which a manifest
+      is uploaded that describes how to concatenate them, enabling a
+      single large object to be downloaded.
+      .
+      This option sets the maximum number of object segments allowed per
+      large object, allowing control over the maximum large object size.
+      The default minimum segment size is 1MB, while the maximum segment
+      size corresponds to the largest object swift is configured
+      to support (5GB by default).
+      .
+      Ex. Setting this to 1000 would allow up to 1000 5GB object segments
+      to be uploaded for a maximum large object size of 5TB.

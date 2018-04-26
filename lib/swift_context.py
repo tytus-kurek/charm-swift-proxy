@@ -111,7 +111,9 @@ class SwiftIdentityContext(OSContextGenerator):
             'log_headers': config('log-headers'),
             'statsd_host': config('statsd-host'),
             'statsd_port': config('statsd-port'),
-            'statsd_sample_rate': config('statsd-sample-rate')
+            'statsd_sample_rate': config('statsd-sample-rate'),
+            'static_large_object_segments': config(
+                'static-large-object-segments')
         }
 
         admin_key = leader_get('swauth-admin-key')
