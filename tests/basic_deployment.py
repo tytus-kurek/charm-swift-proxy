@@ -96,7 +96,8 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         swift_storage_config = {
             'zone': '1',
             'block-device': 'vdb',
-            'overwrite': 'true'
+            'overwrite': 'true',
+            'ephemeral-unmount': '/mnt'
         }
         pxc_config = {
             'innodb-buffer-pool-size': '256M',
@@ -506,7 +507,15 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                 'admin_password': keystone_relation['service_password'],
             })
 
-        if self._get_openstack_release() >= self.trusty_mitaka:
+        if self._get_openstack_release() >= self.xenial_queens:
+            expected['pipeline:main'] = {
+                'pipeline': 'catch_errors gatekeeper healthcheck proxy-logging'
+                ' cache authtoken swift3 s3token container_sync bulk tempurl'
+                ' slo dlo formpost keystoneauth staticweb'
+                ' versioned_writes container-quotas account-quotas'
+                ' proxy-logging proxy-server'
+            }
+        elif self._get_openstack_release() >= self.trusty_mitaka:
             expected['pipeline:main'] = {
                 'pipeline': 'catch_errors gatekeeper healthcheck proxy-logging'
                 ' cache swift3 s3token container_sync bulk tempurl slo dlo'
@@ -525,7 +534,32 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             'admin_token': keystone_relation['admin_token']
         }
 
-        if self._get_openstack_release() >= self.trusty_kilo:
+        if self._get_openstack_release() >= self.xenial_queens:
+            expected['filter:authtoken'].update({
+                'paste.filter_factory': 'keystonemiddleware.auth_token:'
+                                        'filter_factory',
+            })
+            expected['filter:authtoken'].update({
+                'auth_url': '{}://{}:{}'.format(
+                    auth_protocol,
+                    auth_host,
+                    keystone_relation['auth_port']),
+                'auth_plugin': 'password',
+                'username': keystone_relation['service_username'],
+                'password': keystone_relation['service_password'],
+                'project_domain_name': keystone_relation['service_domain'],
+                'user_domain_name': keystone_relation['service_domain'],
+                'project_name': keystone_relation['service_tenant'],
+            })
+            expected['filter:s3token'] = {
+                'use': 'egg:swift3#s3token',
+                'auth_uri': '{}://{}:{}'.format(
+                    auth_protocol,
+                    auth_host,
+                    keystone_relation['auth_port']),
+                'auth_version': '3'
+            }
+        elif self._get_openstack_release() >= self.trusty_kilo:
             # Kilo and later
             expected['filter:authtoken'].update({
                 'paste.filter_factory': 'keystonemiddleware.auth_token:'
