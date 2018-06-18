@@ -122,6 +122,10 @@ from charmhelpers.contrib.network.ip import (
 from charmhelpers.contrib.openstack.context import ADDRESS_TYPES
 from charmhelpers.contrib.charmsupport import nrpe
 from charmhelpers.contrib.hardening.harden import harden
+from charmhelpers.contrib.openstack.cert_utils import (
+    get_certificate_request,
+    process_certificates,
+)
 
 extra_pkgs = [
     "haproxy",
@@ -770,6 +774,20 @@ def amqp_joined(relation_id=None):
 @restart_on_change(restart_map())
 def amqp_changed():
     CONFIGS.write_all()
+
+
+@hooks.hook('certificates-relation-joined')
+def certs_joined(relation_id=None):
+    relation_set(
+        relation_id=relation_id,
+        relation_settings=get_certificate_request())
+
+
+@hooks.hook('certificates-relation-changed')
+@restart_on_change(restart_map(), stopstart=True)
+def certs_changed():
+    process_certificates('swift', None, None)
+    configure_https()
 
 
 def main():

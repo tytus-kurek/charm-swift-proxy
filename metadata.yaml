@@ -42,6 +42,8 @@ requires:
     scope: container
   amqp:
     interface: rabbitmq
+  certificates:
+    interface: tls-certificates
 peers:
   cluster:
     interface: swift-ha
