@@ -627,10 +627,11 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
                     'swift-backed glance image...')
 
         # Create swift-backed glance image
-        img_new = u.create_cirros_image(self.glance, "cirros-image-1")
-        img_id = img_new.id
-        img_md5 = img_new.checksum
-        img_size = img_new.size
+        img_id = u.create_cirros_image(self.glance, "cirros-image-1").id
+
+        # Get the image from glance by ID
+        img_md5 = self.glance.images.get(img_id).checksum
+        img_size = self.glance.images.get(img_id).size
 
         # Validate that swift object's checksum/size match that from glance
         headers, containers = self.swift.get_account()
@@ -641,13 +642,18 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
 
         container_name = containers[0].get('name')
 
+        # Until glance v2 and swift bug is resolved
+        # https://bugs.launchpad.net/glance/+bug/1789748
+        read_headers = {'X-Container-Read': ".r:*,.rlistings"}
+        self.swift.post_container(container_name, headers=read_headers)
+
         headers, objects = self.swift.get_container(container_name)
-        if len(objects) != 1:
-            msg = "Expected 1 swift object, found {}".format(len(objects))
+        if len(objects) != 2:
+            msg = "Expected 2 swift object, found {}".format(len(objects))
             amulet.raise_status(amulet.FAIL, msg=msg)
 
-        swift_object_size = objects[0].get('bytes')
-        swift_object_md5 = objects[0].get('hash')
+        swift_object_size = objects[1].get('bytes')
+        swift_object_md5 = objects[1].get('hash')
 
         if img_size != swift_object_size:
             msg = "Glance image size {} != swift object size {}".format(
