@@ -730,7 +730,13 @@ def update_nrpe_config():
     hostname = nrpe.get_nagios_hostname()
     current_unit = nrpe.get_nagios_unit_name()
     nrpe_setup = nrpe.NRPE(hostname=hostname)
-    nrpe.copy_nrpe_checks()
+    nrpe_files_dir = os.path.join(
+        os.getenv('CHARM_DIR'),
+        'charmhelpers',
+        'contrib',
+        'openstack',
+        'files')
+    nrpe.copy_nrpe_checks(nrpe_files_dir)
     nrpe.add_init_service_checks(nrpe_setup, services(), current_unit)
     nrpe.add_haproxy_checks(nrpe_setup, current_unit)
     api_port = determine_api_port(config('bind-port'),
