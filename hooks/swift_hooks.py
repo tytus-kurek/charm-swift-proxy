@@ -790,6 +790,30 @@ def certs_changed():
     configure_https()
 
 
+@hooks.hook('pre-series-upgrade')
+def pre_series_upgrade():
+    log("Running prepare series upgrade hook", "INFO")
+    if not openstack.is_unit_paused_set():
+        for service in services():
+            stopped = service_stop(service)
+            if not stopped:
+                raise Exception("{} didn't stop cleanly.".format(service))
+        openstack.set_unit_paused()
+    openstack.set_unit_upgrading()
+
+
+@hooks.hook('post-series-upgrade')
+def post_series_upgrade():
+    log("Running complete series upgrade hook", "INFO")
+    openstack.clear_unit_paused()
+    openstack.clear_unit_upgrading()
+    if not openstack.is_unit_paused_set():
+        for service in services():
+            started = service_start(service)
+            if not started:
+                raise Exception("{} didn't start cleanly.".format(service))
+
+
 def main():
     try:
         hooks.execute(sys.argv)
