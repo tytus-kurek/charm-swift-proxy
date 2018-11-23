@@ -237,8 +237,8 @@ class AddUserTestCase(CharmTestCase):
         self.determine_api_port.return_value = 8070
         self.CalledProcessError = ValueError
 
-        self.check_call.side_effect = subprocess.CalledProcessError(
-            0, "hi", "no")
+        e = subprocess.CalledProcessError(0, "hi", "no")
+        self.check_call.side_effect = e
         actions.add_user.add_user()
         self.leader_get.assert_called_with("swauth-admin-key")
         calls = [call("account"), call("username"), call("password")]
@@ -246,8 +246,7 @@ class AddUserTestCase(CharmTestCase):
         self.action_set.assert_not_called()
 
         self.action_fail.assert_called_once_with(
-            'Adding user test failed with: "Command \'hi\' returned non-zero '
-            'exit status 0"')
+            'Adding user test failed with: "{}"'.format(str(e)))
 
 
 class DiskUsageTestCase(CharmTestCase):
