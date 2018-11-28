@@ -552,3 +552,47 @@ class SwiftUtilsTestCase(unittest.TestCase):
         swift_utils.clear_storage_rings_available()
         mock_relation_set.assert_called_once_with(
             relation_id='storage:0', rings_url=None)
+
+    def test_determine_packages(self):
+        self.assertEqual(
+            ['swift',
+             'swift-proxy',
+             'memcached',
+             'apache2',
+             'python-keystone'],
+            swift_utils.determine_packages('essex')
+        )
+
+        self.assertEqual(
+            ['swift',
+             'swift-proxy',
+             'memcached',
+             'apache2',
+             'python-keystone',
+             'swift-plugin-s3',
+             'swauth'],
+            swift_utils.determine_packages('folsom')
+        )
+
+        self.assertEqual(
+            ['swift',
+             'swift-proxy',
+             'memcached',
+             'apache2',
+             'python-keystone',
+             'swift-plugin-s3',
+             'swauth',
+             'python-ceilometermiddleware'],
+            swift_utils.determine_packages('mitaka')
+        )
+
+        self.assertEqual(
+            ['swift',
+             'swift-proxy',
+             'memcached',
+             'apache2',
+             'python-keystone',
+             'swauth',
+             'python-ceilometermiddleware'],
+            swift_utils.determine_packages('rocky')
+        )

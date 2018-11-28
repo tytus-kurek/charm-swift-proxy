@@ -125,9 +125,9 @@ BASE_PACKAGES = [
     'python-keystone',
 ]
 # > Folsom specific packages
-FOLSOM_PACKAGES = BASE_PACKAGES + ['swift-plugin-s3', 'swauth']
+FOLSOM_PACKAGES = ['swift-plugin-s3', 'swauth']
 # > Mitaka specific packages
-MITAKA_PACKAGES = FOLSOM_PACKAGES + ['python-ceilometermiddleware']
+MITAKA_PACKAGES = ['python-ceilometermiddleware']
 
 SWIFT_HA_RES = 'grp_swift_vips'
 TEMPLATES = 'templates/'
@@ -454,12 +454,14 @@ def ensure_swift_dir(conf_dir=os.path.dirname(SWIFT_CONF)):
 def determine_packages(release):
     """Determine what packages are needed for a given OpenStack release."""
     cmp_openstack = CompareOpenStackReleases(release)
+    pkgs = BASE_PACKAGES[:]
+    if cmp_openstack >= 'folsom':
+        pkgs += FOLSOM_PACKAGES
     if cmp_openstack >= 'mitaka':
-        return MITAKA_PACKAGES
-    elif cmp_openstack >= 'folsom':
-        return FOLSOM_PACKAGES
-    else:
-        return BASE_PACKAGES
+        pkgs += MITAKA_PACKAGES
+    if cmp_openstack >= 'rocky':
+        pkgs.remove('swift-plugin-s3')
+    return pkgs
 
 
 def initialize_ring(path, part_power, replicas, min_hours):

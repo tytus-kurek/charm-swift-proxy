@@ -65,7 +65,8 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             {'name': 'percona-cluster'},
             {'name': 'keystone'},
             {'name': 'glance'},
-            {'name': 'swift-storage'}
+            {'name': 'swift-storage',
+             'storage': {'block-devices': 'cinder,10G'}},
         ]
         super(SwiftProxyBasicDeployment, self)._add_services(this_service,
                                                              other_services)
@@ -95,9 +96,6 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
         }
         swift_storage_config = {
             'zone': '1',
-            'block-device': 'vdb',
-            'overwrite': 'true',
-            'ephemeral-unmount': '/mnt'
         }
         pxc_config = {
             'innodb-buffer-pool-size': '256M',
@@ -366,7 +364,7 @@ class SwiftProxyBasicDeployment(OpenStackAmuletDeployment):
             'object_port': '6000',
             'container_port': '6001',
             'private-address': u.valid_ip,
-            'device': 'vdb'
+            'device': 'vdd'
         }
 
         ret = u.validate_relation_data(unit, relation, expected)
