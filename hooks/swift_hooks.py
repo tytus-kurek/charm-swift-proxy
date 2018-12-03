@@ -69,11 +69,10 @@ from lib.swift_utils import (
 import charmhelpers.contrib.openstack.utils as openstack
 
 from charmhelpers.contrib.openstack.ha.utils import (
-    update_dns_ha_resource_params,
+    generate_ha_relation_data,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
-    get_hacluster_config,
     is_elected_leader,
     determine_api_port,
 )
@@ -113,10 +112,7 @@ from charmhelpers.contrib.openstack.ip import (
     ADMIN,
 )
 from charmhelpers.contrib.network.ip import (
-    get_iface_for_address,
-    get_netmask_for_address,
     get_relation_ip,
-    is_ipv6,
     format_ipv6_addr,
 )
 from charmhelpers.contrib.openstack.context import ADDRESS_TYPES
@@ -203,6 +199,9 @@ def config_changed():
 
     for r_id in relation_ids('amqp'):
         amqp_joined(relation_id=r_id)
+
+    for r_id in relation_ids('ha'):
+        ha_relation_joined(relation_id=r_id)
 
     try_initialize_swauth()
 
@@ -630,64 +629,8 @@ def ha_relation_changed():
 
 @hooks.hook('ha-relation-joined')
 def ha_relation_joined(relation_id=None):
-    # Obtain the config values necessary for the cluster config. These
-    # include multicast port and interface to bind to.
-    cluster_config = get_hacluster_config()
-
-    # Obtain resources
-    resources = {'res_swift_haproxy': 'lsb:haproxy'}
-    resource_params = {'res_swift_haproxy': 'op monitor interval="5s"'}
-
-    if config('dns-ha'):
-        update_dns_ha_resource_params(relation_id=relation_id,
-                                      resources=resources,
-                                      resource_params=resource_params)
-    else:
-        vip_group = []
-        for vip in cluster_config['vip'].split():
-            if is_ipv6(vip):
-                res_swift_vip = 'ocf:heartbeat:IPv6addr'
-                vip_params = 'ipv6addr'
-            else:
-                res_swift_vip = 'ocf:heartbeat:IPaddr2'
-                vip_params = 'ip'
-
-            iface = get_iface_for_address(vip)
-            if iface is not None:
-                vip_key = 'res_swift_{}_vip'.format(iface)
-                if vip_key in vip_group:
-                    if vip not in resource_params[vip_key]:
-                        vip_key = '{}_{}'.format(vip_key, vip_params)
-                    else:
-                        log("Resource '{}' (vip='{}') already exists in "
-                            "vip group - skipping".format(vip_key, vip),
-                            WARNING)
-                        continue
-
-                resources[vip_key] = res_swift_vip
-                resource_params[vip_key] = (
-                    'params {ip}="{vip}" cidr_netmask="{netmask}"'
-                    ' nic="{iface}"'
-                    ''.format(ip=vip_params,
-                              vip=vip,
-                              iface=iface,
-                              netmask=get_netmask_for_address(vip))
-                )
-                vip_group.append(vip_key)
-
-        if len(vip_group) >= 1:
-            relation_set(groups={'grp_swift_vips': ' '.join(vip_group)})
-
-    init_services = {'res_swift_haproxy': 'haproxy'}
-    clones = {'cl_swift_haproxy': 'res_swift_haproxy'}
-
-    relation_set(relation_id=relation_id,
-                 init_services=init_services,
-                 corosync_bindiface=cluster_config['ha-bindiface'],
-                 corosync_mcastport=cluster_config['ha-mcastport'],
-                 resources=resources,
-                 resource_params=resource_params,
-                 clones=clones)
+    settings = generate_ha_relation_data('swift')
+    relation_set(relation_id=relation_id, **settings)
 
 
 def configure_https():

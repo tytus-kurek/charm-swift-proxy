@@ -231,48 +231,13 @@ class SwiftHooksTestCase(unittest.TestCase):
                                      'internal-address': '10.0.1.1',
                                      'public-address': '10.0.0.1'})])
 
+    @patch.object(swift_hooks, 'generate_ha_relation_data')
     @patch.object(swift_hooks, 'relation_set')
-    @patch.object(swift_hooks, 'update_dns_ha_resource_params')
-    @patch.object(swift_hooks, 'get_hacluster_config')
-    @patch.object(swift_hooks, 'config')
-    def test_ha_relation_joined_dns_ha(self, test_config, get_hacluster_config,
-                                       update_dns_ha_resource_params,
-                                       relation_set):
-        def _fake_update(resources, resource_params, relation_id=None):
-            resources.update({'res_swift_proxy_public_hostname':
-                              'ocf:maas:dns'})
-            resource_params.update({'res_swift_proxy_public_hostname':
-                                    'params fqdn="keystone.maas" '
-                                    'ip_address="10.0.0.1"'})
-
-        test_config.set('dns-ha', True)
-        get_hacluster_config.return_value = {
-            'vip': None,
-            'ha-bindiface': 'em0',
-            'ha-mcastport': '8080',
-            'os-admin-hostname': None,
-            'os-internal-hostname': None,
-            'os-public-hostname': 'keystone.maas',
-        }
-        args = {
-            'relation_id': None,
-            'corosync_bindiface': 'em0',
-            'corosync_mcastport': '8080',
-            'init_services': {'res_swift_haproxy': 'haproxy'},
-            'resources': {'res_swift_proxy_public_hostname': 'ocf:maas:dns',
-                          'res_swift_haproxy': 'lsb:haproxy'},
-            'resource_params': {
-                'res_swift_proxy_public_hostname':
-                    'params fqdn="keystone.maas" '
-                    'ip_address="10.0.0.1"',
-                'res_swift_haproxy': 'op monitor interval="5s"'},
-            'clones': {'cl_swift_haproxy': 'res_swift_haproxy'}
-        }
-        update_dns_ha_resource_params.side_effect = _fake_update
-
-        swift_hooks.ha_relation_joined()
-        self.assertTrue(update_dns_ha_resource_params.called)
-        relation_set.assert_called_with(**args)
+    def test_ha_relation_joined(self, relation_set, generate_ha_relation_data):
+        generate_ha_relation_data.return_value = {'rel_data': 'data'}
+        swift_hooks.ha_relation_joined(relation_id='rid:23')
+        relation_set.assert_called_once_with(
+            relation_id='rid:23', rel_data='data')
 
     @patch.object(swift_hooks, 'is_elected_leader')
     @patch.object(swift_hooks, 'get_relation_ip')
