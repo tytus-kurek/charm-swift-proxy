@@ -311,13 +311,11 @@ class SwiftUtilsTestCase(unittest.TestCase):
 
     @mock.patch('lib.swift_utils.is_elected_leader', lambda arg: True)
     @mock.patch.object(swift_utils, 'get_hostaddr', lambda *args: '1.2.3.4')
-    @mock.patch.object(swift_utils, 'time')
     @mock.patch('lib.swift_utils.uuid')
-    def test_cluster_rpc_sync_request(self, mock_uuid, mock_time):
-        mock_time.time = mock.Mock(return_value=float(1.234))
+    def test_cluster_rpc_sync_request(self, mock_uuid):
         mock_uuid.uuid4.return_value = 'token2'
         rpc = swift_utils.SwiftProxyClusterRPC()
-        rq = rpc.sync_rings_request('token1')
+        rq = rpc.sync_rings_request('token1', '1.234000')
         self.assertEqual({'trigger': 'token2',
                           'broker-token': 'token1',
                           'broker-timestamp': '1.234000',
@@ -512,3 +510,45 @@ class SwiftUtilsTestCase(unittest.TestCase):
                                        'http://localhost:8080/auth',
                                        '-K',
                                        'Test'])
+
+    @mock.patch.object(swift_utils.uuid, 'uuid4')
+    @mock.patch.object(swift_utils, 'relation_set')
+    @mock.patch.object(swift_utils, 'get_swift_hash')
+    @mock.patch.object(swift_utils, 'log')
+    @mock.patch.object(swift_utils, 'relation_ids')
+    @mock.patch.object(swift_utils, 'get_www_dir')
+    @mock.patch.object(swift_utils, 'format_ipv6_addr')
+    @mock.patch.object(swift_utils, 'get_hostaddr')
+    @mock.patch.object(swift_utils, 'is_elected_leader')
+    def test_notify_storage_rings_available(self, mock_is_leader,
+                                            mock_get_hostaddr,
+                                            mock_format_ipv6_addr,
+                                            mock_get_www_dir,
+                                            mock_relation_ids,
+                                            mock_log,
+                                            mock_get_swift_hash,
+                                            mock_relation_set,
+                                            mock_uuid):
+        mock_is_leader.return_value = True
+        mock_get_hostaddr.return_value = '10.0.0.1'
+        mock_format_ipv6_addr.return_value = None
+        mock_get_www_dir.return_value = 'some/dir'
+        mock_relation_ids.return_value = ['storage:0']
+        mock_get_swift_hash.return_value = 'greathash'
+        mock_uuid.return_value = 'uuid-1234'
+        swift_utils.notify_storage_rings_available('1.234')
+        mock_relation_set.assert_called_once_with(
+            broker_timestamp='1.234',
+            relation_id='storage:0',
+            rings_url='http://10.0.0.1/dir',
+            swift_hash='greathash',
+            trigger='uuid-1234')
+
+    @mock.patch.object(swift_utils, 'relation_set')
+    @mock.patch.object(swift_utils, 'relation_ids')
+    def test_clear_notify_storage_rings_available(self, mock_relation_ids,
+                                                  mock_relation_set):
+        mock_relation_ids.return_value = ['storage:0']
+        swift_utils.clear_storage_rings_available()
+        mock_relation_set.assert_called_once_with(
+            relation_id='storage:0', rings_url=None)

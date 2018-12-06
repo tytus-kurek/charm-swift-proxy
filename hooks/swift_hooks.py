@@ -64,6 +64,7 @@ from lib.swift_utils import (
     timestamps_available,
     assess_status,
     try_initialize_swauth,
+    clear_storage_rings_available,
 )
 
 import charmhelpers.contrib.openstack.utils as openstack
@@ -251,6 +252,8 @@ def storage_joined(rid=None):
         # possibility of storage nodes getting out-of-date rings by deprecating
         # any existing ones from the www dir.
         mark_www_rings_deleted()
+        clear_storage_rings_available()
+
     try_initialize_swauth()
 
     # NOTE(jamespage): Ensure private-address is set to any network-space
