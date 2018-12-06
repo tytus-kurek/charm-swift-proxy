@@ -261,12 +261,16 @@ class SwiftProxyClusterRPC(object):
         rq['peers-only'] = echo_peers_only
         return rq
 
-    def sync_rings_request(self, broker_token, builders_only=False):
+    def sync_rings_request(self, broker_token, broker_timestamp,
+                           builders_only=False):
         """Request for peers to sync rings from leader.
 
         NOTE: this action must only be performed by the cluster leader.
 
         :param broker_token: token to identify sync request.
+        @param broker_timestamp: timestamp for peer and storage sync - this
+                                 MUST bethe same as the one used for storage
+                                 sync.
         :param builders_only: if False, tell peers to sync builders only (not
                               rings).
         """
@@ -281,7 +285,7 @@ class SwiftProxyClusterRPC(object):
             rq['sync-only-builders'] = 1
 
         rq['broker-token'] = broker_token
-        rq['broker-timestamp'] = "{:f}".format(time.time())
+        rq['broker-timestamp'] = broker_timestamp
         rq['builder-broker'] = self._hostname
         return rq
 
@@ -893,11 +897,15 @@ def mark_www_rings_deleted():
             os.rename(path, "{}.deleted".format(path))
 
 
-def notify_peers_builders_available(broker_token, builders_only=False):
+def notify_peers_builders_available(broker_token, broker_timestamp,
+                                    builders_only=False):
     """Notify peer swift-proxy units that they should synchronise ring and
     builder files.
 
     Note that this should only be called from the leader unit.
+
+    @param broker_timestamp: timestamp for peer and storage sync - this MUST be
+    the same as the one used for storage sync.
     """
     if not is_elected_leader(SWIFT_HA_RES):
         log("Ring availability peer broadcast requested by non-leader - "
@@ -922,6 +930,7 @@ def notify_peers_builders_available(broker_token, builders_only=False):
     log("Notifying peer(s) that {} are ready for sync."
         .format(_type), level=INFO)
     rq = SwiftProxyClusterRPC().sync_rings_request(broker_token,
+                                                   broker_timestamp,
                                                    builders_only=builders_only)
     for rid in cluster_rids:
         log("Notifying rid={} ({})".format(rid, rq), level=DEBUG)
@@ -935,16 +944,21 @@ def broadcast_rings_available(storage=True, builders_only=False,
 
     We can opt to only notify peer or storage relations if needs be.
     """
+
+    # NOTE: this MUST be the same for peer and storage sync
+    broker_timestamp = "{:f}".format(time.time())
+
     if storage:
         # TODO: get ack from storage units that they are synced before
         # syncing proxies.
-        notify_storage_rings_available()
+        notify_storage_rings_available(broker_timestamp)
     else:
         log("Skipping notify storage relations", level=DEBUG)
 
     # Always set peer info even if not clustered so that info is present when
     # units join
     notify_peers_builders_available(broker_token,
+                                    broker_timestamp,
                                     builders_only=builders_only)
 
 
@@ -987,11 +1001,14 @@ def cluster_sync_rings(peers_only=False, builders_only=False, token=None):
         relation_set(relation_id=rid, relation_settings=rq)
 
 
-def notify_storage_rings_available():
+def notify_storage_rings_available(broker_timestamp):
     """Notify peer swift-storage relations that they should synchronise ring
     and builder files.
 
     Note that this should only be called from the leader unit.
+
+    @param broker_timestamp: timestamp for peer and storage sync - this MUST be
+                             the same as the one used for peer sync.
     """
     if not is_elected_leader(SWIFT_HA_RES):
         log("Ring availability storage-relation broadcast requested by "
@@ -1002,13 +1019,26 @@ def notify_storage_rings_available():
     hostname = format_ipv6_addr(hostname) or hostname
     path = os.path.basename(get_www_dir())
     rings_url = 'http://{}/{}'.format(hostname, path)
+
+    # TODO(hopem): consider getting rid of this trigger since the timestamp
+    #              should do the job.
     trigger = uuid.uuid4()
+
     # Notify storage nodes that there is a new ring to fetch.
     log("Notifying storage nodes that new rings are ready for sync.",
         level=INFO)
     for relid in relation_ids('swift-storage'):
         relation_set(relation_id=relid, swift_hash=get_swift_hash(),
-                     rings_url=rings_url, trigger=trigger)
+                     rings_url=rings_url, broker_timestamp=broker_timestamp,
+                     trigger=trigger)
+
+
+def clear_storage_rings_available():
+    """Clear the rings_url setting so that storage units don't accidentally try
+    to sync from this unit (which is presumably no longer the leader).
+    """
+    for relid in relation_ids('swift-storage'):
+        relation_set(relation_id=relid, rings_url=None)
 
 
 def fully_synced():

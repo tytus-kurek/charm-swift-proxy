@@ -274,6 +274,7 @@ class SwiftHooksTestCase(unittest.TestCase):
         self.assertTrue(update_dns_ha_resource_params.called)
         relation_set.assert_called_with(**args)
 
+    @patch.object(swift_hooks, 'clear_storage_rings_available')
     @patch.object(swift_hooks, 'is_elected_leader')
     @patch.object(swift_hooks, 'get_relation_ip')
     @patch.object(swift_hooks, 'try_initialize_swauth')
@@ -284,7 +285,8 @@ class SwiftHooksTestCase(unittest.TestCase):
                                   mark_www_rings_deleted,
                                   try_initialize_swauth,
                                   get_relation_ip,
-                                  is_elected_leader):
+                                  is_elected_leader,
+                                  mock_clear_storage_rings_available):
         is_elected_leader.return_value = False
         get_relation_ip.return_value = '10.10.20.243'
         swift_hooks.storage_joined(rid='swift-storage:23')
@@ -294,3 +296,4 @@ class SwiftHooksTestCase(unittest.TestCase):
             relation_settings={'private-address': '10.10.20.243'}
         )
         try_initialize_swauth.assert_called_once()
+        mock_clear_storage_rings_available.assert_called_once()
