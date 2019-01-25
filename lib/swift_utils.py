@@ -268,7 +268,7 @@ class SwiftProxyClusterRPC(object):
         NOTE: this action must only be performed by the cluster leader.
 
         :param broker_token: token to identify sync request.
-        @param broker_timestamp: timestamp for peer and storage sync - this
+        :param broker_timestamp: timestamp for peer and storage sync - this
                                  MUST bethe same as the one used for storage
                                  sync.
         :param builders_only: if False, tell peers to sync builders only (not
