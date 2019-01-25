@@ -113,7 +113,11 @@ class SwiftIdentityContext(OSContextGenerator):
             'statsd_port': config('statsd-port'),
             'statsd_sample_rate': config('statsd-sample-rate'),
             'static_large_object_segments': config(
-                'static-large-object-segments')
+                'static-large-object-segments'),
+            'enable_multi_region': config('enable-multi-region'),
+            'read_affinity': config('read-affinity'),
+            'write_affinity': config('write-affinity'),
+            'write_affinity_node_count': config('write-affinity-node-count')
         }
 
         admin_key = leader_get('swauth-admin-key')

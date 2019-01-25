@@ -96,9 +96,11 @@ def add_dev(ring_path, dev):
     The dev is in the form of:
 
     new_dev = {
+        'region': node['region'],
         'zone': node['zone'],
         'ip': node['ip'],
         'port': port,
+        'port_rep': 'port_rep',
         'device': node['device'],
         'weight': 100,
         'meta': '',

@@ -326,10 +326,14 @@ def storage_changed():
     zone = get_zone(config('zone-assignment'))
     node_settings = {
         'ip': host_ip,
+        'region': relation_get('region'),
         'zone': zone,
         'account_port': relation_get('account_port'),
+        'account_port_rep': relation_get('account_port_rep'),
         'object_port': relation_get('object_port'),
+        'object_port_rep': relation_get('object_port_rep'),
         'container_port': relation_get('container_port'),
+        'container_port_rep': relation_get('container_port_rep'),
     }
 
     if None in node_settings.values():
@@ -338,7 +342,14 @@ def storage_changed():
             "relation (missing={})".format(', '.join(missing)), level=INFO)
         return None
 
-    for k in ['zone', 'account_port', 'object_port', 'container_port']:
+    for k in ['region',
+              'zone',
+              'account_port',
+              'account_port_rep',
+              'object_port',
+              'object_port_rep',
+              'container_port',
+              'container_port_rep']:
         node_settings[k] = int(node_settings[k])
 
     CONFIGS.write_all()

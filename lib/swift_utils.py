@@ -479,6 +479,7 @@ def exists_in_ring(ring_path, node):
 
 def add_to_ring(ring_path, node):
     port = _ring_port(ring_path, node)
+    port_rep = _ring_port_rep(ring_path, node)
 
     # Note: this code used to attempt to calculate new dev ids, but made
     # various assumptions (e.g. in order devices, all devices in the ring
@@ -486,9 +487,11 @@ def add_to_ring(ring_path, node):
     # automatically calculate the new device's ID if no id is provided (at
     # least since the Icehouse release).
     new_dev = {
+        'region': node['region'],
         'zone': node['zone'],
         'ip': node['ip'],
         'port': port,
+        'port_rep': port_rep,
         'device': node['device'],
         'weight': 100,
         'meta': '',
@@ -503,6 +506,13 @@ def _ring_port(ring_path, node):
     for name in ['account', 'object', 'container']:
         if name in ring_path:
             return node[('{}_port'.format(name))]
+
+
+def _ring_port_rep(ring_path, node):
+    """Determine correct port from relation settings for a given ring file."""
+    for name in ['account', 'object', 'container']:
+        if name in ring_path:
+            return node[('{}_port_rep'.format(name))]
 
 
 def get_zone(assignment_policy):
