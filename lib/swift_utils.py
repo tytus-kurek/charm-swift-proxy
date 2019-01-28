@@ -1205,9 +1205,11 @@ def customer_check_assess_status(configs):
         return ('blocked', 'Missing relation: storage')
 
     # Verify allowed_hosts is populated with enough unit IP addresses
-    ctxt = SwiftRingContext()()
-    if len(ctxt['allowed_hosts']) < config('replicas'):
-        return ('blocked', 'Not enough related storage nodes')
+    identity_ctxt = SwiftIdentityContext()()
+    ring_ctxt = SwiftRingContext()()
+    if not identity_ctxt['enable_multi_region']:
+        if len(ring_ctxt['allowed_hosts']) < config('replicas'):
+            return ('blocked', 'Not enough related storage nodes')
 
     # Verify there are enough storage zones to satisfy minimum replicas
     rings = [r for r in SWIFT_RINGS.values()]
