@@ -326,6 +326,7 @@ def storage_changed():
     zone = get_zone(config('zone-assignment'))
     node_settings = {
         'ip': host_ip,
+        'replication_ip': relation_get('replication_ip'),
         'region': relation_get('region'),
         'zone': zone,
         'account_port': relation_get('account_port'),
