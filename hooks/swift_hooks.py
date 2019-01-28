@@ -265,7 +265,9 @@ def storage_joined(rid=None):
 
 
 def get_host_ip(rid=None, unit=None):
-    addr = relation_get('private-address', rid=rid, unit=unit)
+    addr = relation_get(rid=rid, unit=unit).get('ip')
+    if not addr:
+        addr = relation_get('private-address', rid=rid, unit=unit)
     if config('prefer-ipv6'):
         host_ip = format_ipv6_addr(addr)
         if host_ip:
