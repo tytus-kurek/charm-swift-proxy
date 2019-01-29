@@ -125,6 +125,11 @@ def get_min_part_hours(ring_path):
     return builder.min_part_hours
 
 
+def get_current_replicas(ring_path):
+    builder = _load_builder(ring_path)
+    return builder.replicas
+
+
 def get_zone(ring_path):
     """Determine the zone for the ring_path
 
@@ -190,9 +195,12 @@ def has_minimum_zones(rings):
             }
         builder = _load_builder(ring).to_dict()
         replicas = builder['replicas']
+        regions = [dev['region'] for dev in builder['devs'] if dev]
         zones = [dev['zone'] for dev in builder['devs'] if dev]
+        num_regions = len(set(regions))
         num_zones = len(set(zones))
-        if num_zones < replicas:
+        num_zones_in_regions = num_regions * num_zones
+        if num_zones_in_regions < replicas:
             log = ("Not enough zones ({:d}) defined to satisfy minimum "
                    "replicas (need >= {:d})".format(num_zones, replicas))
             return {

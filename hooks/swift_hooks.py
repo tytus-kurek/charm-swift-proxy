@@ -183,7 +183,8 @@ def config_changed():
         status_set('maintenance', 'Running openstack upgrade')
 
     status_set('maintenance', 'Updating and (maybe) balancing rings')
-    update_rings(min_part_hours=config('min-hours'))
+    update_rings(min_part_hours=config('min-hours'),
+                 replicas=config('replicas'))
 
     if not config('disable-ring-balance') and is_elected_leader(SWIFT_HA_RES):
         # Try ring balance. If rings are balanced, no sync will occur.

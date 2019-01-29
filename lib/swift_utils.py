@@ -812,7 +812,7 @@ def sync_builders_and_rings_if_changed(f):
 
 
 @sync_builders_and_rings_if_changed
-def update_rings(nodes=None, min_part_hours=None):
+def update_rings(nodes=None, min_part_hours=None, replicas=None):
     """Update builder with node settings and balance rings if necessary.
 
     Also update min_part_hours if provided.
@@ -851,6 +851,13 @@ def update_rings(nodes=None, min_part_hours=None):
                     add_to_ring(ring, node)
                     balance_required = True
 
+    if replicas is not None:
+        for ring, path in SWIFT_RINGS.items():
+            current_replicas = get_current_replicas(path)
+            if replicas != current_replicas:
+                update_replicas(path, replicas)
+                balance_required = True
+
     if balance_required:
         balance_rings()
 
@@ -871,6 +878,19 @@ def set_min_part_hours(path, value):
     except subprocess.CalledProcessError:
         raise SwiftProxyCharmException(
             "Failed to set min_part_hours={} on {}".format(value, path))
+
+
+def get_current_replicas(path):
+    return get_manager().get_current_replicas(path)
+
+
+def update_replicas(path, replicas):
+    cmd = ['swift-ring-builder', path, 'set_replicas', str(replicas)]
+    try:
+        subprocess.check_call(cmd)
+    except subprocess.CalledProcessError:
+        raise SwiftProxyCharmException(
+            "Failed to set replicas={} on {}".format(value, path))
 
 
 @sync_builders_and_rings_if_changed
