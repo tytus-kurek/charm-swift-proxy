@@ -1213,9 +1213,8 @@ def customer_check_assess_status(configs):
 
     # Verify there are enough storage zones to satisfy minimum replicas
     rings = [r for r in SWIFT_RINGS.values()]
-    if not identity_ctxt['enable_multi_region']:
-        if not has_minimum_zones(rings):
-            return ('blocked', 'Not enough storage zones for minimum replicas')
+    if not has_minimum_zones(rings):
+        return ('blocked', 'Not enough storage zones for minimum replicas')
 
     if config('prefer-ipv6'):
         for rid in relation_ids('swift-storage'):
