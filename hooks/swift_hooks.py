@@ -65,7 +65,7 @@ from lib.swift_utils import (
     assess_status,
     try_initialize_swauth,
     clear_storage_rings_available,
-    fetch_swift_rings,
+    fetch_swift_rings_and_builders,
 )
 
 import charmhelpers.contrib.openstack.utils as openstack
@@ -777,11 +777,13 @@ def post_series_upgrade():
 
 
 @hooks.hook('master-relation-joined')
+@hooks.hook('master-relation-changed')
 def master_joined():
     broadcast_rings_available()
 
 
 @hooks.hook('slave-relation-joined')
+@hooks.hook('slave-relation-changed')
 @restart_on_change(restart_map())
 def slave_joined():
     """Copied from swift-storage charm"""
@@ -789,9 +791,9 @@ def slave_joined():
     swift_hash = relation_get('swift_hash')
     if '' in [rings_url, swift_hash] or None in [rings_url, swift_hash]:
         log('swift_storage_relation_changed: Peer not ready?')
-        sys.exit(0)
+        return
     try:
-        fetch_swift_rings(rings_url)
+        fetch_swift_rings_and_builders(rings_url)
     except CalledProcessError:
         log("Failed to sync rings from {} - no longer available from that "
             "unit?".format(rings_url), level=WARNING)

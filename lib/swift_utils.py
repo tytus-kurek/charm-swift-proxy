@@ -1307,7 +1307,7 @@ def assess_status_func(configs, check_services=None):
         charm_func=customer_check_assess_status,
         services=check_services, ports=None)
 
-def fetch_swift_rings(rings_url):
+def fetch_swift_rings_and_builders(rings_url):
     """Copied from swift-storage charm"""
     log('Fetching swift rings from proxy @ %s.' % rings_url, level=INFO)
     target = SWIFT_CONF_DIR
@@ -1315,13 +1315,14 @@ def fetch_swift_rings(rings_url):
     try:
         synced = []
         for server in ['account', 'object', 'container']:
-            url = '%s/%s.%s' % (rings_url, server, SWIFT_RING_EXT)
-            log('Fetching %s.' % url, level=DEBUG)
-            ring = '%s.%s' % (server, SWIFT_RING_EXT)
-            cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
-                   os.path.join(tmpdir, ring)]
-            check_call(cmd)
-            synced.append(ring)
+            for ext in [SWIFT_RING_EXT, 'builder']:
+                url = '%s/%s.%s' % (rings_url, server, ext)
+                log('Fetching %s.' % url, level=DEBUG)
+                ring = '%s.%s' % (server, ext)
+                cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
+                       os.path.join(tmpdir, ring)]
+                subprocess.check_call(cmd)
+                synced.append(ring)
 
         # Once all have been successfully downloaded, move them to actual
         # location.
