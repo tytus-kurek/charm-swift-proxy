@@ -1,4 +1,6 @@
-1) Relating swift-storage-region2 application to swift-proxy-region1
+1) TO BE TESTED AGAIN.
+
+Relating swift-storage-region2 application to swift-proxy-region1
 application through the cross-controller relation is not sufficient. The
 swift-storage-region2 application has to be first related to
 swift-proxy-region2 application. Otherwise the swift-storage-region2
@@ -44,8 +46,12 @@ juju consume maas-region1:admin/swift-region1.swift-proxy-region1
 juju relate swift-storage-region2 swift-proxy-region2
 juju relate swift-storage-region2 swift-proxy-region1
 
-3) There are some checks in the the swift-proxy charm code (which shouldn't be
+3) TO BE TESTED AGAIN.
+
+There are some checks in the the swift-proxy charm code (which shouldn't be
 there BTW) which don't allow multiple replicas if certain conditions are not
 met. For the time being I've added an additional check so that if the
 'enable-multi-region' option is set, those are ignored. This should be solved
 properly, however.
+
+4) Exclude the "custom-hosts-allow" charm option.

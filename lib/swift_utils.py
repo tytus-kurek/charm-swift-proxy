@@ -1064,6 +1064,10 @@ def notify_storage_rings_available(broker_timestamp):
         relation_set(relation_id=relid, swift_hash=get_swift_hash(),
                      rings_url=rings_url, broker_timestamp=broker_timestamp,
                      trigger=trigger)
+    for relid in relation_ids('master'):
+        relation_set(relation_id=relid, swift_hash=get_swift_hash(),
+                     rings_url=rings_url, broker_timestamp=broker_timestamp,
+                     trigger=trigger)
 
 
 def clear_storage_rings_available():
@@ -1302,3 +1306,26 @@ def assess_status_func(configs, check_services=None):
         configs, required_interfaces,
         charm_func=customer_check_assess_status,
         services=check_services, ports=None)
+
+def fetch_swift_rings(rings_url):
+    """Copied from swift-storage charm"""
+    log('Fetching swift rings from proxy @ %s.' % rings_url, level=INFO)
+    target = SWIFT_CONF_DIR
+    tmpdir = tempfile.mkdtemp(prefix='swiftrings')
+    try:
+        synced = []
+        for server in ['account', 'object', 'container']:
+            url = '%s/%s.%s' % (rings_url, server, SWIFT_RING_EXT)
+            log('Fetching %s.' % url, level=DEBUG)
+            ring = '%s.%s' % (server, SWIFT_RING_EXT)
+            cmd = ['wget', url, '--retry-connrefused', '-t', '10', '-O',
+                   os.path.join(tmpdir, ring)]
+            check_call(cmd)
+            synced.append(ring)
+
+        # Once all have been successfully downloaded, move them to actual
+        # location.
+        for f in synced:
+            os.rename(os.path.join(tmpdir, f), os.path.join(target, f))
+    finally:
+        shutil.rmtree(tmpdir)

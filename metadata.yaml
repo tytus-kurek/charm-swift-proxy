@@ -32,6 +32,8 @@ provides:
     scope: container
   object-store:
     interface: swift-proxy
+  master:
+    interface: swift-proxy-cluster
 requires:
   swift-storage:
     interface: swift
@@ -44,6 +46,8 @@ requires:
     interface: rabbitmq
   certificates:
     interface: tls-certificates
+  slave:
+    interface: swift-proxy-cluster
 peers:
   cluster:
     interface: swift-ha
