@@ -54,6 +54,4 @@ met. For the time being I've added an additional check so that if the
 'enable-multi-region' option is set, those are ignored. This should be solved
 properly, however.
 
-4) Exclude the "custom-hosts-allow" charm option.
-
-5) Master - Slave relation in HA mode.
+4) Master - Slave relation in HA mode.
