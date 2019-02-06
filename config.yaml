@@ -376,6 +376,12 @@ options:
     default: False
     description: |
       Enables multi-region setup for the storage nodes.
+  enable-transition-to-master:
+    type: boolean
+    default: False
+    description: |
+      Enables a transition to master of the Swift Proxy node which had
+      previously been configured as slave.
   read-affinity:
     type: string
     default: ''

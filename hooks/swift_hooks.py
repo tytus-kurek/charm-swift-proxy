@@ -94,6 +94,9 @@ from charmhelpers.core.hookenv import (
     Hooks, UnregisteredHookError,
     open_port,
     status_set,
+    is_leader,
+    leader_get,
+    leader_set,
 )
 from charmhelpers.core.host import (
     service_reload,
@@ -777,15 +780,41 @@ def post_series_upgrade():
 
 
 @hooks.hook('master-relation-joined')
-@hooks.hook('master-relation-changed')
 def master_joined():
+    if leader_get('swift-proxy-slave'):
+        if not config('enable-transition-to-master'):
+            log("Swift Proxy cannot act as both master and slave at the same "
+                "time, skipping.", level=DEBUG)
+        return
+    if is_leader():
+        leader_set({'swift-proxy-master': True})
+
+
+@hooks.hook('master-relation-changed')
+def master_changed():
     broadcast_rings_available()
 
 
+@hooks.hook('master-relation-departed')
+def master_departed():
+    if is_leader():
+        leader_set({'swift-proxy-master': False})
+
+
 @hooks.hook('slave-relation-joined')
+def slave_joined():
+    if leader_get('swift-proxy-master'):
+        log("Swift Proxy cannot act as both master and slave at the same time,"
+            " skipping.", level=DEBUG)
+    if leader_get('swift-proxy-slave'):
+        log("Swift Proxy already acting as a slave, skipping.", level=DEBUG)
+    if is_leader():
+        leader_set({'swift-proxy-slave': True})
+
+
 @hooks.hook('slave-relation-changed')
 @restart_on_change(restart_map())
-def slave_joined():
+def slave_changed():
     """Copied from swift-storage charm"""
     rings_url = relation_get('rings_url')
     swift_hash = relation_get('swift_hash')
@@ -797,6 +826,13 @@ def slave_joined():
     except CalledProcessError:
         log("Failed to sync rings from {} - no longer available from that "
             "unit?".format(rings_url), level=WARNING)
+    broadcast_rings_available()
+
+
+@hooks.hook('slave-relation-departed')
+def slave_departed():
+    if is_leader():
+        leader_set({'swift-proxy-slave': False})
 
 
 def main():
