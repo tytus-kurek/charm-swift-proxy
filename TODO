@@ -1,30 +1,4 @@
-1) TO BE TESTED AGAIN.
-
-Relating swift-storage-region2 application to swift-proxy-region1
-application through the cross-controller relation is not sufficient. The
-swift-storage-region2 application has to be first related to
-swift-proxy-region2 application. Otherwise the swift-storage-region2
-application hangs in an "Incomplete relation" status. This means there is
-something wrong with the cross-controller relations.
-
-DOES NOT WORK:
-
-juju switch maas-region1
-juju offer swift-proxy-region1:swift-storage
-juju switch maas-region2
-juju consume maas-region1:admin/swift-region1.swift-proxy-region1
-juju relate swift-storage-region2 swift-proxy-region1
-
-WORKS:
-
-juju switch maas-region1
-juju offer swift-proxy-region1:swift-storage
-juju switch maas-region2
-juju consume maas-region1:admin/swift-region1.swift-proxy-region1
-juju relate swift-storage-region2 swift-proxy-region2
-juju relate swift-storage-region2 swift-proxy-region1
-
-2) When swift-storage-region2 application is related to swift-proxy-region1
+1) When swift-storage-region2 application is related to swift-proxy-region1
 application and then it gets related to swift-proxy-region2 application, the
 swift-proxy-region2 application will overwrite the rings.
 
@@ -46,12 +20,4 @@ juju consume maas-region1:admin/swift-region1.swift-proxy-region1
 juju relate swift-storage-region2 swift-proxy-region2
 juju relate swift-storage-region2 swift-proxy-region1
 
-3) TO BE TESTED AGAIN.
-
-There are some checks in the the swift-proxy charm code (which shouldn't be
-there BTW) which don't allow multiple replicas if certain conditions are not
-met. For the time being I've added an additional check so that if the
-'enable-multi-region' option is set, those are ignored. This should be solved
-properly, however.
-
-4) Master - Slave relation in HA mode.
+2) Master - Slave relation in HA mode.

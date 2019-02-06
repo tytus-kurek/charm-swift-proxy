@@ -1225,20 +1225,22 @@ def customer_check_assess_status(configs):
     @returns (status, message): The outcome of the checks.
     """
     # Check for required swift-storage relation
-    if len(relation_ids('swift-storage')) < 1:
-        return ('blocked', 'Missing relation: storage')
+    if len(relation_ids('master')) < 1:
+        if len(relation_ids('swift-storage')) < 1:
+            return ('blocked', 'Missing relation: storage')
 
     # Verify allowed_hosts is populated with enough unit IP addresses
     identity_ctxt = SwiftIdentityContext()()
     ring_ctxt = SwiftRingContext()()
-    if not identity_ctxt['enable_multi_region']:
+    if len(relation_ids('master')) < 1:
         if len(ring_ctxt['allowed_hosts']) < config('replicas'):
             return ('blocked', 'Not enough related storage nodes')
 
     # Verify there are enough storage zones to satisfy minimum replicas
     rings = [r for r in SWIFT_RINGS.values()]
-    if not has_minimum_zones(rings):
-        return ('blocked', 'Not enough storage zones for minimum replicas')
+    if len(relation_ids('master')) < 1:
+        if not has_minimum_zones(rings):
+            return ('blocked', 'Not enough storage zones for minimum replicas')
 
     if config('prefer-ipv6'):
         for rid in relation_ids('swift-storage'):
