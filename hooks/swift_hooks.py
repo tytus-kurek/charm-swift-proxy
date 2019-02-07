@@ -186,9 +186,11 @@ def config_changed():
         do_openstack_upgrade(CONFIGS)
         status_set('maintenance', 'Running openstack upgrade')
 
-    status_set('maintenance', 'Updating and (maybe) balancing rings')
-    update_rings(min_part_hours=config('min-hours'),
-                 replicas=config('replicas'))
+    if not leader_get('swift-proxy-slave') or \
+            config('enable-transition-to-master'):
+        status_set('maintenance', 'Updating and (maybe) balancing rings')
+        update_rings(min_part_hours=config('min-hours'),
+                     replicas=config('replicas'))
 
     if not config('disable-ring-balance') and is_elected_leader(SWIFT_HA_RES):
         # Try ring balance. If rings are balanced, no sync will occur.
@@ -813,6 +815,7 @@ def slave_joined():
 
 
 @hooks.hook('slave-relation-changed')
+@sync_builders_and_rings_if_changed
 @restart_on_change(restart_map())
 def slave_changed():
     """Copied from swift-storage charm"""
