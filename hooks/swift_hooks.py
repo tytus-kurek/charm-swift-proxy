@@ -68,6 +68,8 @@ from lib.swift_utils import (
     fetch_swift_rings_and_builders,
 )
 
+from lib.swift_context import get_swift_hash
+
 import charmhelpers.contrib.openstack.utils as openstack
 
 from charmhelpers.contrib.openstack.ha.utils import (
@@ -821,8 +823,11 @@ def slave_changed():
     """Copied from swift-storage charm"""
     rings_url = relation_get('rings_url')
     swift_hash = relation_get('swift_hash')
+    if swift_hash != get_swift_hash():
+        log('Swift hash has to be unique in multi-region setup. Please use the'
+            ' swift-hash config option on both sides.')
     if '' in [rings_url, swift_hash] or None in [rings_url, swift_hash]:
-        log('swift_storage_relation_changed: Peer not ready?')
+        log('slave_relation_changed: Peer not ready?')
         return
     try:
         fetch_swift_rings_and_builders(rings_url)
