@@ -104,6 +104,64 @@ single service unit.  New units will be distributed across the existing zones.
     # swift-storage/4 is assigned to zone 2.
     etc.
 
+**Global Cluster.**
+
+This charm supports Swift Global Cluster feature as described at
+https://docs.openstack.org/swift/latest/overview_global_cluster.html .
+In order to enable it the 'enable-multi-region' option has to be set to 'True'.
+Additional options ('read-affinity', 'write-affinity' and 'write-affinity-node-
+count') can be used to influence how the objects will be read and written.
+
+In addition storage nodes have to be configured with the 'region' option and
+related to all proxies participating in the global cluster. More than one proxy
+can be deployed, but they have to be related using 'master' / 'slave'
+endpoints and the 'swift-hash' option has to be unique across them. Only one
+proxy can act as a master.
+
+    $ cat >swift.cfg <<END
+    swift-proxy-region1:
+        zone-assignment: manual
+        replicas: 2
+        enable-multi-region: true
+        swift-hash: "global-cluster"
+        read-affinity: "r1=100, r2=200"
+        write-affinity: "r1, r2"
+        write-affinity-node-count: 1
+    swift-proxy-region2:
+        zone-assignment: manual
+        replicas: 2
+        enable-multi-region: true
+        swift-hash: "global-cluster"
+        read-affinity: "r2=100, r1=200"
+        write-affinity: "r2, r1"
+        write-affinity-node-count: 1
+    swift-storage-region1:
+        region: 1
+        zone: 1
+        block-device: /etc/swift/storage.img|2G
+    swift-storage-region2:
+        region: 2
+        zone: 1
+        block-device: /etc/swift/storage.img|2G
+    END
+    $ juju deploy --config=swift.cfg swift-proxy-region1
+    $ juju deploy --config=swift.cfg swift-proxy-region2
+    $ juju deploy --config=swift.cfg swift-storage-region1
+    $ juju deploy --config=swift.cfg swift-storage-region2
+    $ juju add-relation swift-proxy-region1 swift-storage-region1
+    $ juju add-relation swift-proxy-region1 swift-storage-region2
+    $ juju add-relation swift-proxy-region2 swift-storage-region1
+    $ juju add-relation swift-proxy-region2 swift-storage-region2
+    $ juju add-relation swift-proxy-region1:master swift-proxy-region2:slave
+
+In case of the failure of 'swift-proxy-region1', if it is not possible to
+recover it, 'swift-proxy-region2' should be transitioned into master.
+
+    $ juju config swift-proxy-region2 enable-transition-to-master=True
+
+Additional proxy can be deployed later and related to 'swift-proxy-region2'
+using 'master' / 'slave' endpoints.
+
 **Installation repository.**
 
 The 'openstack-origin' setting allows Swift to be installed from installation

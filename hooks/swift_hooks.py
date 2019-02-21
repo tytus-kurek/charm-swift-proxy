@@ -65,7 +65,10 @@ from lib.swift_utils import (
     assess_status,
     try_initialize_swauth,
     clear_storage_rings_available,
+    fetch_swift_rings_and_builders,
 )
+
+from lib.swift_context import get_swift_hash
 
 import charmhelpers.contrib.openstack.utils as openstack
 
@@ -93,6 +96,9 @@ from charmhelpers.core.hookenv import (
     Hooks, UnregisteredHookError,
     open_port,
     status_set,
+    is_leader,
+    leader_get,
+    leader_set,
 )
 from charmhelpers.core.host import (
     service_reload,
@@ -182,8 +188,11 @@ def config_changed():
         do_openstack_upgrade(CONFIGS)
         status_set('maintenance', 'Running openstack upgrade')
 
-    status_set('maintenance', 'Updating and (maybe) balancing rings')
-    update_rings(min_part_hours=config('min-hours'))
+    if not leader_get('swift-proxy-slave') or \
+            config('enable-transition-to-master'):
+        status_set('maintenance', 'Updating and (maybe) balancing rings')
+        update_rings(min_part_hours=config('min-hours'),
+                     replicas=config('replicas'))
 
     if not config('disable-ring-balance') and is_elected_leader(SWIFT_HA_RES):
         # Try ring balance. If rings are balanced, no sync will occur.
@@ -265,7 +274,9 @@ def storage_joined(rid=None):
 
 
 def get_host_ip(rid=None, unit=None):
-    addr = relation_get('private-address', rid=rid, unit=unit)
+    addr = relation_get(rid=rid, unit=unit).get('ip_cls')
+    if not addr:
+        addr = relation_get('private-address', rid=rid, unit=unit)
     if config('prefer-ipv6'):
         host_ip = format_ipv6_addr(addr)
         if host_ip:
@@ -326,10 +337,15 @@ def storage_changed():
     zone = get_zone(config('zone-assignment'))
     node_settings = {
         'ip': host_ip,
+        'ip_rep': relation_get('ip_rep'),
+        'region': relation_get('region'),
         'zone': zone,
         'account_port': relation_get('account_port'),
+        'account_port_rep': relation_get('account_port_rep'),
         'object_port': relation_get('object_port'),
+        'object_port_rep': relation_get('object_port_rep'),
         'container_port': relation_get('container_port'),
+        'container_port_rep': relation_get('container_port_rep'),
     }
 
     if None in node_settings.values():
@@ -338,7 +354,9 @@ def storage_changed():
             "relation (missing={})".format(', '.join(missing)), level=INFO)
         return None
 
-    for k in ['zone', 'account_port', 'object_port', 'container_port']:
+    for k in ['region', 'zone', 'account_port', 'account_port_rep',
+              'object_port', 'object_port_rep', 'container_port',
+              'container_port_rep']:
         node_settings[k] = int(node_settings[k])
 
     CONFIGS.write_all()
@@ -758,6 +776,72 @@ def post_series_upgrade():
             started = service_start(service)
             if not started:
                 raise Exception("{} didn't start cleanly.".format(service))
+
+
+@hooks.hook('master-relation-joined')
+def master_joined():
+    if leader_get('swift-proxy-slave'):
+        if not config('enable-transition-to-master'):
+            msg = "Swift Proxy cannot act as both master and slave"
+            status_set('blocked', msg)
+            raise SwiftProxyCharmException(msg)
+        return
+    if is_leader():
+        leader_set({'swift-proxy-master': True})
+
+
+@hooks.hook('master-relation-changed')
+def master_changed():
+    broadcast_rings_available()
+
+
+@hooks.hook('master-relation-departed')
+def master_departed():
+    if is_leader():
+        leader_set({'swift-proxy-master': False})
+
+
+@hooks.hook('slave-relation-joined')
+def slave_joined():
+    if leader_get('swift-proxy-master'):
+        msg = "Swift Proxy cannot act as both master and slave"
+        status_set('blocked', msg)
+        raise SwiftProxyCharmException(msg)
+    if leader_get('swift-proxy-slave'):
+        msg = "Swift Proxy already acting as slave"
+        status_set('blocked', msg)
+        raise SwiftProxyCharmException(msg)
+    if is_leader():
+        leader_set({'swift-proxy-slave': True})
+
+
+@hooks.hook('slave-relation-changed')
+@sync_builders_and_rings_if_changed
+@restart_on_change(restart_map())
+def slave_changed():
+    """Based on 'swift_storage_relation_changed' function from the
+    swift-storage charm."""
+    rings_url = relation_get('rings_url')
+    swift_hash = relation_get('swift_hash')
+    if '' in [rings_url, swift_hash] or None in [rings_url, swift_hash]:
+        log('slave_relation_changed: Peer not ready?')
+        return
+    if swift_hash != get_swift_hash():
+        msg = "Swift hash has to be unique in multi-region setup"
+        status_set('blocked', msg)
+        raise SwiftProxyCharmException(msg)
+    try:
+        fetch_swift_rings_and_builders(rings_url)
+    except CalledProcessError:
+        log("Failed to sync rings from {} - no longer available from that "
+            "unit?".format(rings_url), level=WARNING)
+    broadcast_rings_available()
+
+
+@hooks.hook('slave-relation-departed')
+def slave_departed():
+    if is_leader():
+        leader_set({'swift-proxy-slave': False})
 
 
 def main():

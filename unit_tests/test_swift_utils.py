@@ -248,6 +248,34 @@ class SwiftUtilsTestCase(unittest.TestCase):
         self.assertTrue(mock_update_www_rings.called)
         self.assertTrue(mock_cluster_sync_rings.called)
 
+    def test__ring_port_rep(self):
+        node = {
+            'region': 1,
+            'zone': 1,
+            'ip': '172.16.0.2',
+            'ip_rep': '172.16.0.2',
+            'account_port': 6000,
+            'account_port_rep': 6010,
+            'device': '/dev/sdb',
+        }
+        expected = node['account_port_rep']
+        actual = swift_utils._ring_port_rep('/etc/swift/account.builder', node)
+        self.assertEqual(actual, expected)
+
+    @mock.patch.object(swift_utils, 'get_manager')
+    def test_get_current_replicas(self, mock_get_manager):
+        swift_utils.get_current_replicas('/etc/swift/account.builder')
+        mock_get_manager().get_current_replicas.assert_called_once_with(
+            '/etc/swift/account.builder')
+
+    @mock.patch.object(subprocess, 'check_call')
+    def test_update_replicas(self, check_call):
+        swift_utils.update_replicas('/etc/swift/account.builder', 3)
+        check_call.assert_called_once_with(['swift-ring-builder',
+                                            '/etc/swift/account.builder',
+                                            'set_replicas',
+                                            '3'])
+
     @mock.patch('lib.swift_utils.get_www_dir')
     def test_mark_www_rings_deleted(self, mock_get_www_dir):
         try:
@@ -413,19 +441,24 @@ class SwiftUtilsTestCase(unittest.TestCase):
     def test_add_to_ring(self, mock_get_manager):
         ring = 'account'
         node = {
-            'ip': '172.16.0.2',
             'region': 1,
-            'account_port': 6000,
             'zone': 1,
+            'ip': '172.16.0.2',
+            'ip_rep': '172.16.0.2',
+            'account_port': 6000,
+            'account_port_rep': 6010,
             'device': '/dev/sdb',
         }
         swift_utils.add_to_ring(ring, node)
         mock_get_manager().add_dev.assert_called_once_with('account', {
-            'meta': '',
+            'region': 1,
             'zone': 1,
             'ip': '172.16.0.2',
-            'device': '/dev/sdb',
+            'replication_ip': '172.16.0.2',
             'port': 6000,
+            'replication_port': 6010,
+            'device': '/dev/sdb',
+            'meta': '',
             'weight': 100
         })
 
@@ -520,34 +553,40 @@ class SwiftUtilsTestCase(unittest.TestCase):
     @mock.patch.object(swift_utils, 'format_ipv6_addr')
     @mock.patch.object(swift_utils, 'get_hostaddr')
     @mock.patch.object(swift_utils, 'is_elected_leader')
-    def test_notify_storage_rings_available(self, mock_is_leader,
-                                            mock_get_hostaddr,
-                                            mock_format_ipv6_addr,
-                                            mock_get_www_dir,
-                                            mock_relation_ids,
-                                            mock_log,
-                                            mock_get_swift_hash,
-                                            mock_relation_set,
-                                            mock_uuid):
+    def test_notify_and_slave_storage_rings_available(self, mock_is_leader,
+                                                      mock_get_hostaddr,
+                                                      mock_format_ipv6_addr,
+                                                      mock_get_www_dir,
+                                                      mock_relation_ids,
+                                                      mock_log,
+                                                      mock_get_swift_hash,
+                                                      mock_relation_set,
+                                                      mock_uuid):
         mock_is_leader.return_value = True
         mock_get_hostaddr.return_value = '10.0.0.1'
         mock_format_ipv6_addr.return_value = None
         mock_get_www_dir.return_value = 'some/dir'
-        mock_relation_ids.return_value = ['storage:0']
+        mock_relation_ids.side_effect = [['storage:0'], ['master:0']]
         mock_get_swift_hash.return_value = 'greathash'
         mock_uuid.return_value = 'uuid-1234'
-        swift_utils.notify_storage_rings_available('1.234')
-        mock_relation_set.assert_called_once_with(
-            broker_timestamp='1.234',
-            relation_id='storage:0',
-            rings_url='http://10.0.0.1/dir',
-            swift_hash='greathash',
-            trigger='uuid-1234')
+        calls = [mock.call(broker_timestamp='1.234',
+                           relation_id='storage:0',
+                           rings_url='http://10.0.0.1/dir',
+                           swift_hash='greathash',
+                           trigger='uuid-1234'),
+                 mock.call(broker_timestamp='1.234',
+                           relation_id='master:0',
+                           rings_url='http://10.0.0.1/dir',
+                           swift_hash='greathash',
+                           trigger='uuid-1234')]
+        swift_utils.notify_storage_and_slave_rings_available('1.234')
+        mock_relation_set.assert_has_calls(calls)
 
     @mock.patch.object(swift_utils, 'relation_set')
     @mock.patch.object(swift_utils, 'relation_ids')
-    def test_clear_notify_storage_rings_available(self, mock_relation_ids,
-                                                  mock_relation_set):
+    def test_clear_notify_storage_and_slave_rings_available(self,
+                                                            mock_relation_ids,
+                                                            mock_relation_set):
         mock_relation_ids.return_value = ['storage:0']
         swift_utils.clear_storage_rings_available()
         mock_relation_set.assert_called_once_with(
@@ -596,3 +635,24 @@ class SwiftUtilsTestCase(unittest.TestCase):
              'python-ceilometermiddleware'],
             swift_utils.determine_packages('rocky')
         )
+
+    def test_fetch_swift_rings_and_builders(self):
+        """
+        Based on the 'test_fetch_swift_rings' function from the swift-storage
+        charm.
+        """
+        url = 'http://someproxynode/rings'
+        swift_utils.SWIFT_CONF_DIR = tempfile.mkdtemp()
+        try:
+            swift_utils.fetch_swift_rings_and_builders(url)
+            wgets = []
+            for s in ['account', 'object', 'container']:
+                for ext in ['ring.gz', 'builder']:
+                    _c = mock.call(['wget', '%s/%s.%s' % (url, s, ext),
+                                    '--retry-connrefused', '-t', '10',
+                                    '-O', swift_utils.SWIFT_CONF_DIR +
+                                    '/%s.%s' % (s, ext)])
+                wgets.append(_c)
+            self.assertEqual(wgets, self.check_call.call_args_list)
+        except:
+            shutil.rmtree(swift_utils.SWIFT_CONF_DIR)
